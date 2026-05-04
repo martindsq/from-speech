@@ -1,3 +1,9 @@
+.DS_Store
+.ipynb_checkpoints/
+.jupyter/
+data/
+venv/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
