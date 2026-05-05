@@ -1,10 +1,17 @@
 import torch
 from .models import DataModule
-from .datasets import  ImageMelDataset
+from .datasets import ImageMelDataset, TinySpeakDataset, RandomStride
 
 class TinyMel(DataModule):
-    def __init__(self, train_set: ImageMelDataset, test_set: ImageMelDataset, batch_size: int = 32):
-        full_set = train_set
+    def __init__(self, base_dir: str, batch_size: int = 32):
+        full_set = ImageMelDataset(
+            base_dataset=TinySpeakDataset(base_dir / "train"),
+            stride=RandomStride()
+        )
+        test_set = ImageMelDataset(
+            base_dataset=TinySpeakDataset(base_dir / "val")
+        )
+
         train_size = int(len(full_set) * 0.8)
         val_size = len(full_set) - train_size
 

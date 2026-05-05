@@ -198,7 +198,7 @@ class HorizontalFeaturesToMel(nn.Module):
             align_corners=False
         )
         x = self.post_blocks(x)
-        mel = self.out_proj(x)
+        mel = F.softplus(self.out_proj(x))
         return mel
 
 class CoWaver(TrainableModule):
@@ -218,16 +218,6 @@ class CoWaver(TrainableModule):
             mel_bins=mel_bins,
             seq_len=seq_len
         )
-
-        self._optimizer = AdamW(
-            [
-                {"params": self.visual_encoder.parameters(), "lr": 3e-5},
-                {"params": self.adapter.parameters(), "lr": 3e-4},
-                {"params": self.decoder.parameters(), "lr": 1e-3},
-            ],
-            weight_decay=1e-4
-        )
-        self._lr_scheduler = StepLR(self._optimizer, step_size=5, gamma=0.5)
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         """Hace una inferencia.
@@ -257,7 +247,7 @@ class CoWaver(TrainableModule):
         (x, y), _ = batch
         y = y.squeeze(1)
         y_hat, _ = self(x)
-        loss = F.l1_loss(y_hat, y) + 0.5 * F.mse_loss(y_hat, y)
+        loss = F.l1_loss(torch.log1p(y_hat), torch.log1p(y)) + 0.05 * F.l1_loss(y_hat, y)
         return loss
 
     def test_step(self, data: DataModule, batch: tuple) -> TestResults:
@@ -266,7 +256,7 @@ class CoWaver(TrainableModule):
         prototypes = data.mel_prototypes(y_hat.device)
 
         distances = torch.abs(
-            y_hat.unsqueeze(1) - prototypes.unsqueeze(0)
+            torch.log1p(y_hat).unsqueeze(1) - torch.log1p(prototypes).unsqueeze(0)
         ).mean(dim=(2, 3))
 
         k = min(5, distances.size(1))
@@ -283,7 +273,18 @@ class CoWaver(TrainableModule):
         return self(x)
     
     def optimizer(self, phase: int) -> torch.optim.Optimizer:
-        return self._optimizer 
+        if phase == 1:
+            lrs = (3e-5, 3e-4, 1e-3)
+        else:
+            lrs = (3e-6, 1e-4, 3e-4)
+        return AdamW(
+            [
+                {"params": self.visual_encoder.parameters(), "lr": lrs[0]},
+                {"params": self.adapter.parameters(), "lr": lrs[1]},
+                {"params": self.decoder.parameters(), "lr": lrs[2]},
+            ],
+            weight_decay=1e-4
+        )
     
     def scheduler(self, optimizer: Optimizer, phase: int) -> LRScheduler: 
-        return self._lr_scheduler
+        return StepLR(optimizer, step_size=5, gamma=0.5)

@@ -2,7 +2,7 @@ import torch
 import torchaudio
 from torch import Tensor, nn, device
 import torch.nn.functional as F
-from torchaudio.transforms import Resample
+from torchaudio.transforms import Resample, InverseMelScale, GriffinLim
 from PIL import Image, ImageDraw, ImageFont
 import tarfile
 import ipywidgets as widgets
@@ -167,6 +167,48 @@ def extract_mel(waveform: Tensor, mel_bins: int = 40):
 
     return mel
 
+def extraer_waveform(mel: Tensor):
+    """Construye un waveform a partir de un espectrograma Mel.
+
+    Parameters
+    ----------
+    mel: Tensor
+        Tensor de forma [B, mel_bins, T] donde T el número de frames temporales.
+
+    Returns
+    -------
+    waveform: Tensor
+        Tensor de forma [B, 1, T] con el waveform extraído.
+    """
+
+    if mel.dim() == 2:
+        mel = mel.unsqueeze(0)
+
+    mel = mel.clamp_min(0)
+
+    n_fft = 2048
+    hop_length = int(round(AUDIO_SAMPLE_RATE / 49))
+
+    inverse_mel = InverseMelScale(
+        n_stft=n_fft // 2 + 1,
+        n_mels=40,
+        sample_rate=AUDIO_SAMPLE_RATE,
+        f_min=0.0,
+        f_max=AUDIO_SAMPLE_RATE / 2,
+    ).to(mel.device)
+
+    griffin_lim = GriffinLim(
+        n_fft=n_fft,
+        hop_length=hop_length,
+        power=2.0,
+        n_iter=64,
+    ).to(mel.device)
+
+    spectrogram = inverse_mel(mel)
+    waveform = griffin_lim(spectrogram)
+
+    return waveform
+
 def clip_waveform(waveform: Tensor, duration: float = 1.0):
     """Corta el audio o rellena con ceros para que la duracion sea la
     especificada.
@@ -233,8 +275,9 @@ def make_image(word: str, x_stride: float = 0.5, y_stride: float = 0.5):
     x = ToTensor()(img)
     return x
 
-def entrenar_red(net: TrainableModule, data: DataModule, num_epochs: int, phase: int = 1) -> TrainHistory:
-    dispositivo = encontrar_dispositivo(silent=True)
+def entrenar_red(net: TrainableModule, data: DataModule, num_epochs: int, phase: int = 1, dispositivo: device | None = None) -> TrainHistory:
+    if dispositivo is None:
+        dispositivo = encontrar_dispositivo(silent=True)
     net = mover_a_dispositivo(net, dispositivo)
 
     optimizer = net.optimizer(phase)
