@@ -142,8 +142,8 @@ def extract_mel(waveform: Tensor, mel_bins: int = 40):
     Returns
     -------
     mel: Tensor
-        Espectrograma Mel de forma [B, mel_bins, T]. B es igual a 1 si se
-        omitió en waveform.
+        Espectrograma Mel comprimido de forma [B, mel_bins, T]. B es igual a 1
+        si se omitió en waveform.
     """
     if waveform.dim() == 1:
         waveform = waveform.unsqueeze(0)
@@ -165,7 +165,7 @@ def extract_mel(waveform: Tensor, mel_bins: int = 40):
     # Torchaudio expects [channels, time], so we treat batch as "channels"
     mel = mel_transform(waveform)  # [B, n_mels, time_frames]
 
-    return mel
+    return torch.log1p(mel)
 
 def extraer_waveform(mel: Tensor):
     """Construye un waveform a partir de un espectrograma Mel.
@@ -184,7 +184,7 @@ def extraer_waveform(mel: Tensor):
     if mel.dim() == 2:
         mel = mel.unsqueeze(0)
 
-    mel = mel.clamp_min(0)
+    mel = torch.expm1(mel).clamp_min(0)
 
     n_fft = 2048
     hop_length = int(round(AUDIO_SAMPLE_RATE / 49))

@@ -1,7 +1,33 @@
 import torchaudio
-from torch import Tensor, nn, empty, full, randn_like
+from torch import Tensor, nn, empty, full, randn, randn_like
 from torch.nn import functional as F
 from .utils import AUDIO_SAMPLE_RATE
+
+class RandomPosition(nn.Module):
+    """Sample a normalized 2-D position for rendered text.
+
+    Parameters
+    ----------
+    mean:
+        Mean normalized position for both axes.
+    std:
+        Standard deviation for both axes. Use `0.0` for deterministic centered
+        text when `mean=0.5`.
+    """
+
+    def __init__(self, mean=0.5, std=0.1):
+        super().__init__()
+        self.mean = mean
+        self.std = std
+
+    def forward(self):
+        x = randn(1).item() * self.std + self.mean
+        y = randn(1).item() * self.std + self.mean
+
+        x = max(0.0, min(1.0, x))
+        y = max(0.0, min(1.0, y))
+
+        return x, y
 
 class RandomAlign(nn.Module):
     """Align a waveform inside a one second window.
@@ -23,7 +49,7 @@ class RandomAlign(nn.Module):
         the crop position.
     """
 
-    def __init__(self, stride: float | tuple = (0.0, 1.0)) -> None:
+    def __init__(self, stride: float | tuple = 0.5) -> None:
         super().__init__()
         self.stride = self._setup_stride(stride)
         self.sample_rate = AUDIO_SAMPLE_RATE
@@ -588,3 +614,166 @@ class RandomHighpass(nn.Module):
 
     def __repr__(self) -> str:
         return (f"{self.__class__.__name__} (cutoff={self.cutoff}, Q={self.Q})")
+
+
+class RandomScene(nn.Module):
+    """Apply one random efficient audio scene.
+
+    Scenes use cheap biquad filters and noise. Pitch shift and reverb are
+    intentionally excluded because they are much more expensive.
+
+    Parameters
+    ----------
+    scenes: list[str] or None
+        Scene names to sample from. If None, all available scenes are used.
+    """
+
+    SCENES = {
+        "clean": {},
+        "telephone": {
+            "hp": (225.0, 375.0),
+            "lp": (2550.0, 4250.0),
+            "noise": (11.25, 18.75),
+        },
+        "cheap-microphone": {
+            "bp": (1500.0, 2500.0),
+            "bp_Q": 1.2,
+            "notch": 4000.0,
+            "notch_Q": 6.0,
+            "noise": (7.0, 13.0),
+        },
+        "cheap-speaker": {
+            "hp": (112.5, 187.5),
+            "lp": (3750.0, 6250.0),
+            "notch": 1000.0,
+            "notch_Q": 10.0,
+            "noise": (11.25, 18.75),
+        },
+        "tinny-sound": {
+            "hp": (1500.0, 2500.0),
+            "noise": (11.25, 18.75),
+        },
+        "boomy": {
+            "lp": (750.0, 1250.0),
+        },
+        "office": {
+            "hp": (90.0, 150.0),
+            "noise": (15.0, 25.0),
+        },
+        "whisper": {
+            "hp": (750.0, 1250.0),
+            "noise": (11.25, 18.75),
+        },
+        "zoom-call": {
+            "hp": (150.0, 250.0),
+            "lp": (4500.0, 7200.0),
+            "noise": (11.25, 18.75),
+        },
+        "street": {
+            "hp": (90.0, 150.0),
+            "noise": (3.5, 6.5),
+        },
+        "subway": {
+            "lp": (1400.0, 2600.0),
+            "notch": 120.0,
+            "notch_Q": 8.0,
+            "noise": (3.0, 7.0),
+        },
+        "airplane-cabin": {
+            "hp": (90.0, 150.0),
+            "lp": (3750.0, 6250.0),
+            "notch": 500.0,
+            "notch_Q": 6.0,
+            "noise": (3.0, 7.0),
+        },
+    }
+
+    def __init__(self, scenes: list[str] | None = None) -> None:
+        super().__init__()
+        if scenes is None:
+            scenes = list(self.SCENES)
+        unknown_scenes = [scene for scene in scenes if scene not in self.SCENES]
+        if unknown_scenes:
+            raise ValueError(f"unknown scenes: {unknown_scenes}")
+        self.scenes = scenes
+        self.sample_rate = AUDIO_SAMPLE_RATE
+
+    @staticmethod
+    def _sample(value: float | tuple) -> float:
+        if isinstance(value, (float, int)):
+            return float(value)
+        min_value, max_value = value
+        if min_value == max_value:
+            return float(min_value)
+        return float(empty(1).uniform_(min_value, max_value).item())
+
+    def _add_noise(self, waveform: Tensor, noise_db: float) -> Tensor:
+        noise = randn_like(waveform)
+        snr = full(
+            waveform.shape[:-1],
+            noise_db,
+            dtype=waveform.dtype,
+            device=waveform.device,
+        )
+        return torchaudio.functional.add_noise(waveform, noise, snr)
+
+    def get_params(self) -> tuple[str, dict]:
+        """Get the scene name and parameters for the transform."""
+        scene_idx = int(empty(1).random_(len(self.scenes)).item())
+        scene_name = self.scenes[scene_idx]
+        params = self.SCENES[scene_name]
+        return scene_name, params
+
+    def forward(self, waveform: Tensor) -> Tensor:
+        """
+        Parameters
+        ----------
+        waveform: Tensor
+            Tensor of shape [T] or [B, T].
+
+        Returns
+        -------
+        out: Tensor
+            Tensor with shape [B, T].
+        """
+        if waveform.dim() == 1:
+            waveform = waveform.unsqueeze(0)
+
+        scene_name, params = self.get_params()
+        self.last_scene = scene_name
+
+        if "hp" in params:
+            waveform = torchaudio.functional.highpass_biquad(
+                waveform,
+                self.sample_rate,
+                cutoff_freq=self._sample(params["hp"]),
+                Q=self._sample(params.get("hp_Q", 0.707)),
+            )
+        if "bp" in params:
+            waveform = torchaudio.functional.bandpass_biquad(
+                waveform,
+                self.sample_rate,
+                central_freq=self._sample(params["bp"]),
+                Q=self._sample(params.get("bp_Q", 0.707)),
+            )
+        if "lp" in params:
+            waveform = torchaudio.functional.lowpass_biquad(
+                waveform,
+                self.sample_rate,
+                cutoff_freq=self._sample(params["lp"]),
+                Q=self._sample(params.get("lp_Q", 0.707)),
+            )
+        if "notch" in params:
+            waveform = torchaudio.functional.bandreject_biquad(
+                waveform,
+                self.sample_rate,
+                central_freq=self._sample(params["notch"]),
+                Q=self._sample(params.get("notch_Q", 6.0)),
+            )
+        if "noise" in params:
+            waveform = self._add_noise(waveform, self._sample(params["noise"]))
+
+        return waveform
+
+    def __repr__(self) -> str:
+        return (f"{self.__class__.__name__} (scenes={self.scenes})")

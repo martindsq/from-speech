@@ -1,27 +1,50 @@
 import torch
+from torch.nn import Module
 from .models import DataModule
-from .datasets import ImageMelDataset, TinySpeakDataset, RandomStride
+from .datasets import ImageMelDataset, TinySpeakDataset
+from .transforms import RandomAlign, RandomPosition
 
 class TinyMel(DataModule):
-    def __init__(self, base_dir: str, batch_size: int = 32):
-        full_set = ImageMelDataset(
-            base_dataset=TinySpeakDataset(base_dir / "train"),
-            stride=RandomStride()
+    """Build image/mel loaders for a TinySpeak-style dataset.
+
+    Parameters
+    ----------
+    base_dir: str
+        Dataset root containing `train` and `val` class folders.
+    transform:
+        Waveform transform used only for the training split. Defaults to None
+        (centered).
+    position: RandomPosition
+        Position of stimuli in image used only for the training split. Defaults
+        to None (centered).
+    """
+    def __init__(self, base_dir: str, transform: Module | None = None, position: RandomPosition | None = None):
+        batch_size = 32
+        train_full_set = ImageMelDataset(
+            base_dataset=TinySpeakDataset(
+                base_dir / "train",
+                transform=transform
+            ),
+            position=position
+        )
+        val_full_set = ImageMelDataset(
+            base_dataset=TinySpeakDataset(
+                base_dir / "train"
+            )
         )
         test_set = ImageMelDataset(
-            base_dataset=TinySpeakDataset(base_dir / "val")
+            base_dataset=TinySpeakDataset(
+                base_dir / "val"
+            )
         )
 
-        train_size = int(len(full_set) * 0.8)
-        val_size = len(full_set) - train_size
+        train_size = int(len(train_full_set) * 0.8)
 
         generator = torch.Generator().manual_seed(42)
+        indices = torch.randperm(len(train_full_set), generator=generator).tolist()
 
-        train_set, val_set = torch.utils.data.random_split(
-            full_set,
-            [train_size, val_size],
-            generator=generator
-        )
+        train_set = torch.utils.data.Subset(train_full_set, indices[:train_size])
+        val_set = torch.utils.data.Subset(val_full_set, indices[train_size:])
         
         super().__init__(batch_size, train_set, val_set, test_set)
         self._mel_prototypes = None

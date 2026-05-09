@@ -198,7 +198,7 @@ class HorizontalFeaturesToMel(nn.Module):
             align_corners=False
         )
         x = self.post_blocks(x)
-        mel = F.softplus(self.out_proj(x))
+        mel = self.out_proj(x)
         return mel
 
 class CoWaver(TrainableModule):
@@ -247,7 +247,7 @@ class CoWaver(TrainableModule):
         (x, y), _ = batch
         y = y.squeeze(1)
         y_hat, _ = self(x)
-        loss = F.l1_loss(torch.log1p(y_hat), torch.log1p(y)) + 0.05 * F.l1_loss(y_hat, y)
+        loss = F.l1_loss(y_hat, y)
         return loss
 
     def test_step(self, data: DataModule, batch: tuple) -> TestResults:
@@ -256,7 +256,7 @@ class CoWaver(TrainableModule):
         prototypes = data.mel_prototypes(y_hat.device)
 
         distances = torch.abs(
-            torch.log1p(y_hat).unsqueeze(1) - torch.log1p(prototypes).unsqueeze(0)
+            y_hat.unsqueeze(1) - prototypes.unsqueeze(0)
         ).mean(dim=(2, 3))
 
         k = min(5, distances.size(1))
@@ -271,7 +271,7 @@ class CoWaver(TrainableModule):
     def inference_step(self, batch: tuple) -> tuple[Tensor, Tensor]:
         (x, _), _ = batch
         return self(x)
-    
+
     def optimizer(self, phase: int) -> torch.optim.Optimizer:
         if phase == 1:
             lrs = (3e-5, 3e-4, 1e-3)
