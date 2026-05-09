@@ -105,7 +105,7 @@ def explorar_datos(data: DataModule, f: Callable[[DataModule, Tensor], None]):
     )
     return widgets.VBox([w, out])
 
-def explorar_red(net: TrainableModule, data: DataModule, f: Callable[[TrainableModule, Any], ...]):
+def explorar_red(net: TrainableModule, data: DataModule, f: Callable[[TrainableModule, Any], Any]):
     loader = data.inference_loader()
     batches = list(loader)
     labels = [data.labels_from_batch(batch).item() for batch in batches]

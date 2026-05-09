@@ -1,16 +1,18 @@
 name: cowaver
 channels:
   - pytorch
+  - nvidia
   - conda-forge
 dependencies:
+  - python=3.10
   - numpy
   - pillow
   - pysoundfile
   - sympy
   - scipy
   - pytorch=2.4.1
-  - torchaudio
-  - torchvision
+  - torchvision=0.19.1
+  - torchaudio=2.4.1
   - safetensors
   - transformers
   - scikit-learn
