@@ -4,6 +4,7 @@ from torch import Tensor, nn, device
 import torch.nn.functional as F
 from torchaudio.transforms import Resample, InverseMelScale, GriffinLim
 from PIL import Image, ImageDraw, ImageFont
+from matplotlib import font_manager
 import tarfile
 import ipywidgets as widgets
 from pathlib import Path
@@ -14,6 +15,7 @@ from .checkpoints import imprimir_encabezado, guardar_checkpoint
 from .models import DataModule, TestResults, TrainHistory, TrainableModule
 
 AUDIO_SAMPLE_RATE = 16_000
+FONT_PATH = font_manager.findfont("DejaVu Sans Mono")
 
 def encontrar_dispositivo(silent: bool = False):
     """Encuentra un dispositivo apropiado para entrenar o evaluar una red.
@@ -258,7 +260,7 @@ def make_image(word: str, x_stride: float = 0.5, y_stride: float = 0.5):
     img = Image.new("RGB", (W, H), color="white")
     draw = ImageDraw.Draw(img)
 
-    font = ImageFont.truetype("SF-Mono-Regular.otf", size=60)
+    font = ImageFont.truetype(FONT_PATH, size=60)
 
     bbox = draw.textbbox((0, 0), word, font=font)
     text_w = bbox[2] - bbox[0]
