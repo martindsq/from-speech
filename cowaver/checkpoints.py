@@ -6,25 +6,19 @@ from .models import TrainHistory
 
 CHECKPOINTS_ROOT = Path('checkpoints')
 
-def fase_mas_alta(net: TrainableModule, folder: Path) -> int:
+def fases_disponibles(net: TrainableModule, folder: Path) -> [int]:
     prefix = f"{net.name}_"
     suffix = "_phase.pt"
     phases = []
-
     for path in folder.glob(f"{net.name}_*_phase.pt"):
         name = path.name
         if not (name.startswith(prefix) and name.endswith(suffix)):
             continue
-
         phase_token = name[len(prefix):-len(suffix)]
         phase_number = phase_token.rstrip("tsnrhtdd")
         if phase_number.isdigit():
             phases.append(int(phase_number))
-
-    if not phases:
-        raise FileNotFoundError(f"No checkpoints found for '{net.name}' in {folder}")
-
-    return max(phases)
+    return phases
 
 def ruta_al_checkpoint(net: TrainableModule, phase: int, folder: Path):
     ordinal = lambda n: "%d%s" % (n,"tsnrhtdd"[(n//10%10!=1)*(n%10<4)*n%10::4])
@@ -54,7 +48,10 @@ def imprimir_encabezado(net: TrainableModule, phase: int = 1):
 
 def cargar_checkpoint(net: TrainableModule, device: device = device("cpu"), phase: int | None = None, folder: Path = CHECKPOINTS_ROOT, silent: bool = False):
     if phase is None:
-        phase = fase_mas_alta(net)
+        phases = fases_disponibles(net, folder)
+        if not phases:
+            raise FileNotFoundError(f"No checkpoints found for '{net.name}' in {folder}")
+        phase = max(phases)
 
     path = ruta_al_checkpoint(net, phase, folder)
     ckpt = load(path, map_location=device, weights_only=True)

@@ -66,6 +66,13 @@ class TestResults:
     top3: float
     top5: float
 
+    def __str__(self) -> str:
+        return (
+            f"Top-1: {self.top1 * 100:.2f}% | "
+            f"Top-3: {self.top3 * 100:.2f}% | "
+            f"Top-5: {self.top5 * 100:.2f}%"
+        )
+
 class TrainableModule(nn.Module):
     """A module meant to be trained."""
     def __init__(self, name: str):
