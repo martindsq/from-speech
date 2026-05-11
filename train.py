@@ -25,7 +25,6 @@ tiny_letter_xz_path = Path("tiny-letter-26.tar.xz")
 
 tiny_letter_path = descomprimir_archivo(tiny_letter_xz_path, data_path)
 dispositivo = encontrar_dispositivo()
-cowaver = CoWaver()
 # entrenar_red(
 #     net=cowaver,
 #     data=TinyMel(tiny_letter_path),
@@ -34,53 +33,71 @@ cowaver = CoWaver()
 #     dispositivo=dispositivo,
 #     checkpoints_folder=checkpoints_path
 # )
+cowaver = CoWaver(name="no_augmentations")
 entrenar_red(
     net=cowaver,
     data=TinyMel(tiny_letter_path),
-    num_epochs=20,
+    num_epochs=30,
     phase=1,
     dispositivo=dispositivo,
     checkpoints_folder=checkpoints_path
 )
+cowaver = CoWaver(name="random_position")
 entrenar_red(
     net=cowaver,
     data=TinyMel(
         tiny_letter_path,
-        transform=RandomAlign((0.2, 0.8)),
         position=RandomPosition(mean=0.5, std=0.1),
     ),
-    num_epochs=20,
-    phase=2,
+    num_epochs=30,
+    phase=1,
     dispositivo=dispositivo,
     checkpoints_folder=checkpoints_path
 )
+cowaver = CoWaver(name="random_position_and_scene")
 entrenar_red(
     net=cowaver,
     data=TinyMel(
         tiny_letter_path,
         transform=Compose([
-            RandomAlign((0.2, 0.8)),
+            RandomAlign(),
             RandomScene(),
         ]),
         position=RandomPosition(mean=0.5, std=0.1),
     ),
-    num_epochs=20,
-    phase=3,
+    num_epochs=30,
+    phase=1,
     dispositivo=dispositivo,
     checkpoints_folder=checkpoints_path
 )
+cowaver = CoWaver(name="harder_random_position")
 entrenar_red(
     net=cowaver,
     data=TinyMel(
         tiny_letter_path,
         transform=Compose([
-            RandomAlign((0.1, 0.9)),
             RandomScene(),
         ]),
         position=RandomPosition(mean=0.5, std=0.25),
     ),
-    num_epochs=20,
-    phase=4,
+    num_epochs=30,
+    phase=1,
+    dispositivo=dispositivo,
+    checkpoints_folder=checkpoints_path
+)
+cowaver = CoWaver(name="harder_random_position_and_scene")
+entrenar_red(
+    net=cowaver,
+    data=TinyMel(
+        tiny_letter_path,
+        transform=Compose([
+            RandomAlign(),
+            RandomScene(),
+        ]),
+        position=RandomPosition(mean=0.5, std=0.25),
+    ),
+    num_epochs=30,
+    phase=1,
     dispositivo=dispositivo,
     checkpoints_folder=checkpoints_path
 )
