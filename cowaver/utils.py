@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torchaudio.transforms import Resample, InverseMelScale, GriffinLim
 from PIL import Image, ImageDraw, ImageFont
 from matplotlib import font_manager
+import shutil
 import tarfile
 import ipywidgets as widgets
 from pathlib import Path
@@ -31,6 +32,8 @@ def encontrar_dispositivo(silent: bool = False):
     dispositivo: device 
         El dispositivo encontrado.
     """
+    if not silent:
+        print("Buscando dispositivo", end="...")
     if torch.cuda.is_available():
         dispositivo = device("cuda")
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -38,7 +41,7 @@ def encontrar_dispositivo(silent: bool = False):
     else:
         dispositivo = device("cpu")
     if not silent:
-        print("Dispositivo encontrado:", dispositivo)
+        print(dispositivo)
     return dispositivo
 
 def mover_a_dispositivo(x: Tensor | tuple, dispositivo: device | None = None):
@@ -68,12 +71,16 @@ def mover_a_dispositivo(x: Tensor | tuple, dispositivo: device | None = None):
 def descomprimir_archivo(archivo: Path, carpeta: Path) -> Path:
     ruta = carpeta / Path(archivo.stem).stem
     if not ruta.exists():
-        print("Descomprimiendo", f"{ruta}...")
+        print(f"Descomprimiendo {archivo} en {ruta}", end="...")
         with tarfile.open(archivo, mode="r:xz") as tar:
             tar.extractall(path=carpeta)
-    else:
-        print("La carpeta", ruta, "ya existe.")
+        print("OK")
     return ruta
+
+def borrar_carpeta(carpeta: Path):
+    print(f"Borrando {carpeta}", end="...")
+    shutil.rmtree(carpeta)
+    print("OK")
 
 def cargar_audio(audio_path):
     waveform, sample_rate = torchaudio.load(audio_path)
@@ -277,7 +284,7 @@ def make_image(word: str, x_stride: float = 0.5, y_stride: float = 0.5):
     x = ToTensor()(img)
     return x
 
-def entrenar_red(net: TrainableModule, data: DataModule, num_epochs: int, phase: int = 1, dispositivo: device | None = None) -> TrainHistory:
+def entrenar_red(net: TrainableModule, data: DataModule, num_epochs: int, phase: int = 1, dispositivo: device | None = None, checkpoints_folder: Path | None = None) -> TrainHistory:
     if dispositivo is None:
         dispositivo = encontrar_dispositivo(silent=True)
     net = mover_a_dispositivo(net, dispositivo)
@@ -321,7 +328,8 @@ def entrenar_red(net: TrainableModule, data: DataModule, num_epochs: int, phase:
 
         print(f"Época {epoch+1}/{num_epochs} | " f"train_loss={epoch_train_loss:.4f} | val_loss={epoch_val_loss:.4f}")
 
-    guardar_checkpoint(net, train_history, phase)
+    if checkpoints_folder is not None:
+        guardar_checkpoint(net, train_history, phase, checkpoints_folder)
 
     return train_history
 
