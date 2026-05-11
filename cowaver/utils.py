@@ -9,6 +9,7 @@ import shutil
 import tarfile
 import ipywidgets as widgets
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any, Callable
 from torchvision.transforms import ToTensor
 from torchaudio.transforms import MelSpectrogram
@@ -44,28 +45,33 @@ def encontrar_dispositivo(silent: bool = False):
         print(dispositivo)
     return dispositivo
 
-def mover_a_dispositivo(x: Tensor | tuple, dispositivo: device | None = None):
-    """Mueve un tensor a un dispositivo apropiado para entrenar o evaluar.
+def mover_a_dispositivo(x: Tensor | nn.Module | tuple | list | Mapping, dispositivo: device | None = None):
+    """Mueve tensores o módulos a un dispositivo apropiado para entrenar o evaluar.
 
     Parameters
     ----------
-    x: Tensor | tuple
-        Un tensor cualquiera, o una tupla cuyos elementos sean tensores.
+    x: Tensor | nn.Module | tuple | list | Mapping
+        Un tensor cualquiera, un módulo, o una colección cuyos elementos sean
+        tensores o módulos.
     dispositivo: device | None
         Dispositivo apropiado. Si es None, entonces se encuentra uno.
 
     Returns
     -------
-    x: Tensor | tuple
+    x: Tensor | nn.Module | tuple | list | Mapping
         Igual a x pasado como parámetro, pero ubicado en el dispositivo
         apropiado.
     """
     if dispositivo is None:
         dispositivo = encontrar_dispositivo(silent=True)
-    if torch.is_tensor(x):
+    if torch.is_tensor(x) or isinstance(x, nn.Module):
         return x.to(dispositivo)
+    if isinstance(x, Mapping):
+        return type(x)((k, mover_a_dispositivo(v, dispositivo)) for k, v in x.items())
     if isinstance(x, tuple):
         return tuple(mover_a_dispositivo(v, dispositivo) for v in x)
+    if isinstance(x, list):
+        return [mover_a_dispositivo(v, dispositivo) for v in x]
     return x
 
 def descomprimir_archivo(archivo: Path, carpeta: Path) -> Path:
