@@ -287,4 +287,4 @@ class CoWaver(TrainableModule):
         )
     
     def scheduler(self, optimizer: Optimizer, phase: int) -> LRScheduler: 
-        return StepLR(optimizer, step_size=5, gamma=0.5)
+        return StepLR(optimizer, step_size=10, gamma=0.5)

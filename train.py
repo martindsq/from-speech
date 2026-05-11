@@ -22,16 +22,65 @@ print("--data", data_path)
 print("--checkpoints", checkpoints_path)
 
 tiny_letter_xz_path = Path("tiny-letter-26.tar.xz")
-print("tiny_letter_zx_path", tiny_letter_xz_path)
 
 tiny_letter_path = descomprimir_archivo(tiny_letter_xz_path, data_path)
 dispositivo = encontrar_dispositivo()
 cowaver = CoWaver()
+# entrenar_red(
+#     net=cowaver,
+#     data=TinyMel(tiny_letter_path),
+#     num_epochs=3,
+#     phase=1,
+#     dispositivo=dispositivo,
+#     checkpoints_folder=checkpoints_path
+# )
 entrenar_red(
     net=cowaver,
     data=TinyMel(tiny_letter_path),
-    num_epochs=3,
+    num_epochs=20,
     phase=1,
+    dispositivo=dispositivo,
+    checkpoints_folder=checkpoints_path
+)
+entrenar_red(
+    net=cowaver,
+    data=TinyMel(
+        tiny_letter_path,
+        transform=RandomAlign((0.2, 0.8)),
+        position=RandomPosition(mean=0.5, std=0.1),
+    ),
+    num_epochs=20,
+    phase=2,
+    dispositivo=dispositivo,
+    checkpoints_folder=checkpoints_path
+)
+entrenar_red(
+    net=cowaver,
+    data=TinyMel(
+        tiny_letter_path,
+        transform=Compose([
+            RandomAlign((0.2, 0.8)),
+            RandomScene(),
+        ]),
+        position=RandomPosition(mean=0.5, std=0.1),
+    ),
+    num_epochs=20,
+    phase=3,
+    dispositivo=dispositivo,
+    checkpoints_folder=checkpoints_path
+)
+entrenar_red(
+    net=cowaver,
+    data=TinyMel(
+        tiny_letter_path,
+        transform=Compose([
+            RandomAlign((0.1, 0.9)),
+            RandomScene(),
+        ]),
+        position=RandomPosition(mean=0.5, std=0.25),
+    ),
+    num_epochs=20,
+    phase=4,
     dispositivo=dispositivo,
     checkpoints_folder=checkpoints_path
 )
