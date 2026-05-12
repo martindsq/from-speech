@@ -76,6 +76,7 @@ entrenar_red(
     data=TinyMel(
         tiny_letter_path,
         transform=Compose([
+            RandomAlign(),
             RandomScene(),
         ]),
         position=RandomPosition(mean=0.5, std=0.25),

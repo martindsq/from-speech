@@ -41,7 +41,7 @@ def guardar_checkpoint(net: TrainableModule, train_history: TrainHistory, phase:
     print("OK")
 
 def imprimir_encabezado(net: TrainableModule, phase: int = 1):
-    line = "═" * 47
+    line = "=" * 47
     print(line)
     print(f"Red {net.name} | fase {phase}")
     print(line)
@@ -65,5 +65,5 @@ def cargar_checkpoint(net: TrainableModule, device: device = device("cpu"), phas
         train_loss = train_history.train_losses[epoch]
         val_loss = train_history.val_losses[epoch]
         if not silent:
-            print(f"Época {epoch+1}/{num_epochs} | train_loss={train_loss:.4f} | val_loss={val_loss:.4f}")
+            print(f"Epoch {epoch+1}/{num_epochs} | train_loss={train_loss:.4f} | val_loss={val_loss:.4f}")
     return train_history
