@@ -41,7 +41,7 @@ def guardar_checkpoint(net: TrainableModule, train_history: TrainHistory, phase:
     print("OK")
 
 def imprimir_encabezado(net: TrainableModule, phase: int = 1):
-    line = "=" * 47
+    line = "=" * 49
     print(line)
     print(f"Red {net.name} | fase {phase}")
     print(line)

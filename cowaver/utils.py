@@ -145,7 +145,7 @@ def explorar_red(net: TrainableModule, data: DataModule, f: Callable[[TrainableM
     )
     return widgets.VBox([w, out])
 
-def extract_mel(waveform: Tensor, mel_bins: int = 40):
+def extract_mel(waveform: Tensor, mel_bins: int = 80):
     """Calcula un espectrograma Mel.
 
     Parameters
@@ -204,9 +204,11 @@ def extraer_waveform(mel: Tensor):
     n_fft = 2048
     hop_length = int(round(AUDIO_SAMPLE_RATE / 49))
 
+    n_mels = mel.size(-2)
+
     inverse_mel = InverseMelScale(
         n_stft=n_fft // 2 + 1,
-        n_mels=40,
+        n_mels=n_mels,
         sample_rate=AUDIO_SAMPLE_RATE,
         f_min=0.0,
         f_max=AUDIO_SAMPLE_RATE / 2,
@@ -332,7 +334,7 @@ def entrenar_red(net: TrainableModule, data: DataModule, num_epochs: int, phase:
         train_history.train_losses.append(epoch_train_loss)
         train_history.val_losses.append(epoch_val_loss)
 
-        print(f"Época {epoch+1}/{num_epochs} | " f"train_loss={epoch_train_loss:.4f} | val_loss={epoch_val_loss:.4f}")
+        print(f"Epoch {epoch+1}/{num_epochs} | " f"train_loss={epoch_train_loss:.4f} | val_loss={epoch_val_loss:.4f}")
 
     if checkpoints_folder is not None:
         guardar_checkpoint(net, train_history, phase, checkpoints_folder)

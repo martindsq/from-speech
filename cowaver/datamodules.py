@@ -18,24 +18,27 @@ class TinyMel(DataModule):
         Position of stimuli in image used only for the training split. Defaults
         to None (centered).
     """
-    def __init__(self, base_dir: str, transform: Module | None = None, position: RandomPosition | None = None):
+    def __init__(self, base_dir: str, mel_bins: int = 40, transform: Module | None = None, position: RandomPosition | None = None):
         batch_size = 32
         train_full_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
                 base_dir / "train",
                 transform=transform
             ),
-            position=position
+            position=position,
+            mel_bins=mel_bins
         )
         val_full_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
                 base_dir / "train"
-            )
+            ),
+            mel_bins=mel_bins
         )
         test_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
                 base_dir / "val"
-            )
+            ),
+            mel_bins=mel_bins
         )
 
         train_size = int(len(train_full_set) * 0.8)

@@ -40,9 +40,10 @@ class TinySpeakDataset(Dataset):
         return waveform, target
 
 class ImageMelDataset(Dataset):
-    def __init__(self, base_dataset: TinySpeakDataset, position: RandomPosition | None = None):
+    def __init__(self, base_dataset: TinySpeakDataset, position: RandomPosition | None = None, mel_bins: int = 40):
         self.base_dataset = base_dataset
         self.position = position
+        self.mel_bins = mel_bins
 
     def __len__(self):
         return len(self.base_dataset)
@@ -53,7 +54,7 @@ class ImageMelDataset(Dataset):
 
     def __getitem__(self, index):
         waveform, target = self.base_dataset[index]
-        mel = extract_mel(waveform)
+        mel = extract_mel(waveform, mel_bins = self.mel_bins)
         word = self.classes[target]
         if self.position is None:
             x_stride, y_stride = 0.5, 0.5
