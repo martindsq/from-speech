@@ -202,8 +202,8 @@ class HorizontalFeaturesToMel(nn.Module):
         return mel
 
 class CoWaver(TrainableModule):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, name: str = "cowaver"):
-        super().__init__(name=name)
+    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24):
+        super().__init__(name=f"cowaver_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}")
         self.mel_bins = mel_bins
         self.visual_encoder = ImageToHorizontalFeatures(
             feature_dim=latent_dim,
