@@ -4,6 +4,9 @@
 data/
 venv/
 checkpoints/
+install.batch
+train.batch
+*.out
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

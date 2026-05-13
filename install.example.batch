@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --job-name=install
+#SBATCH --ntasks=1
+#SBATCH --mem=2048
+#SBATCH --time=12:00:00
+#SBATCH --partition=normal
+#SBATCH --qos=normal
+#SBATCH --output=install.out
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=YOUR_EMAIL_HERE
+
+/clusteruy/home/$USER/miniconda3/bin/activate
+cd ~/cowaver
+conda env remove -n cowaver -y
+conda env create -f environment-cuda.yml

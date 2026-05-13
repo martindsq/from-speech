@@ -74,19 +74,24 @@ def train_cowaver(cowaver: CoWaver):
         checkpoints_folder=checkpoints_path
     )
 
-train_cowaver(CoWaver(latent_dim=128, hidden_size=128, mel_bins=40, width_steps=16))
-train_cowaver(CoWaver(latent_dim=128, hidden_size=256, mel_bins=40, width_steps=24))
+# train_cowaver(CoWaver(latent_dim=128, hidden_size=128, mel_bins=40, width_steps=16))
+# train_cowaver(CoWaver(latent_dim=128, hidden_size=256, mel_bins=40, width_steps=24))
 # train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=40, width_steps=24))
 # train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=40, width_steps=32))
-train_cowaver(CoWaver(latent_dim=256, hidden_size=512, mel_bins=40, width_steps=32))
+# train_cowaver(CoWaver(latent_dim=256, hidden_size=512, mel_bins=40, width_steps=32))
 
-train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=64, width_steps=24))
+# train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=64, width_steps=24))
 # train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=24))
 # train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=32))
-train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=48))
+train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=40))
+train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=56))
+train_cowaver(CoWaver(latent_dim=320, hidden_size=320, mel_bins=80, width_steps=40))
+train_cowaver(CoWaver(latent_dim=320, hidden_size=320, mel_bins=80, width_steps=48))
+train_cowaver(CoWaver(latent_dim=384, hidden_size=256, mel_bins=80, width_steps=48))
+train_cowaver(CoWaver(latent_dim=256, hidden_size=384, mel_bins=80, width_steps=48))
 
-train_cowaver(CoWaver(latent_dim=384, hidden_size=384, mel_bins=80, width_steps=32))
-train_cowaver(CoWaver(latent_dim=512, hidden_size=512, mel_bins=80, width_steps=32))
+# train_cowaver(CoWaver(latent_dim=384, hidden_size=384, mel_bins=80, width_steps=32))
+# train_cowaver(CoWaver(latent_dim=512, hidden_size=512, mel_bins=80, width_steps=32))
 
 borrar_carpeta(tiny_letter_path)
 borrar_carpeta(mswc_microset_path)
