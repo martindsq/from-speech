@@ -28,14 +28,7 @@ mswc_microset_xz_path = Path("mswc_microset.tar.xz")
 tiny_letter_path = descomprimir_archivo(tiny_letter_xz_path, data_path)
 mswc_microset_path = descomprimir_archivo(mswc_microset_xz_path, data_path)
 dispositivo = encontrar_dispositivo()
-# entrenar_red(
-#     net=cowaver,
-#     data=TinyMel(tiny_letter_path),
-#     num_epochs=3,
-#     phase=1,
-#     dispositivo=dispositivo,
-#     checkpoints_folder=checkpoints_path
-# )
+
 def train_cowaver(cowaver: CoWaver):
     entrenar_red(
         net=cowaver,
@@ -74,24 +67,12 @@ def train_cowaver(cowaver: CoWaver):
         checkpoints_folder=checkpoints_path
     )
 
-# train_cowaver(CoWaver(latent_dim=128, hidden_size=128, mel_bins=40, width_steps=16))
-# train_cowaver(CoWaver(latent_dim=128, hidden_size=256, mel_bins=40, width_steps=24))
-# train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=40, width_steps=24))
-# train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=40, width_steps=32))
-# train_cowaver(CoWaver(latent_dim=256, hidden_size=512, mel_bins=40, width_steps=32))
+def load_cowaver(cowaver: CoWaver):
+    for i in range(3):
+        cargar_checkpoint(net=cowaver, device=dispositivo, phase=i+1, folder=checkpoints_path)
 
-# train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=64, width_steps=24))
-# train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=24))
-# train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=32))
-train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=40))
-train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=56))
-train_cowaver(CoWaver(latent_dim=320, hidden_size=320, mel_bins=80, width_steps=40))
-train_cowaver(CoWaver(latent_dim=320, hidden_size=320, mel_bins=80, width_steps=48))
-train_cowaver(CoWaver(latent_dim=384, hidden_size=256, mel_bins=80, width_steps=48))
-train_cowaver(CoWaver(latent_dim=256, hidden_size=384, mel_bins=80, width_steps=48))
-
-# train_cowaver(CoWaver(latent_dim=384, hidden_size=384, mel_bins=80, width_steps=32))
-# train_cowaver(CoWaver(latent_dim=512, hidden_size=512, mel_bins=80, width_steps=32))
+load_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=24))
+# load_cowaver(CoWaver(latent_dim=384, hidden_size=256, mel_bins=80, width_steps=48))
 
 borrar_carpeta(tiny_letter_path)
 borrar_carpeta(mswc_microset_path)
