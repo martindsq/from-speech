@@ -63,3 +63,21 @@ class ImageMelDataset(Dataset):
         image = make_image(word, x_stride, y_stride)
 
         return (image, mel), target
+
+
+class RelabeledDataset(Dataset):
+    """Wrap a dataset and shift its labels by a fixed offset.
+
+    This is useful when concatenating datasets that each start their class IDs
+    at zero, so labels from different sources do not collide.
+    """
+    def __init__(self, dataset: Dataset, label_offset: int):
+        self.dataset = dataset
+        self.label_offset = label_offset
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, index):
+        elements, label = self.dataset[index]
+        return elements, label + self.label_offset

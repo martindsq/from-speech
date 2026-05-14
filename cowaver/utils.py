@@ -8,6 +8,7 @@ from matplotlib import font_manager
 import shutil
 import tarfile
 import ipywidgets as widgets
+import unicodedata
 from pathlib import Path
 from collections.abc import Mapping
 from typing import Any, Callable
@@ -271,6 +272,7 @@ def make_image(word: str, x_stride: float = 0.5, y_stride: float = 0.5):
     """
     W = 224
     H = 224
+    word = unicodedata.normalize("NFC", word)
 
     img = Image.new("RGB", (W, H), color="white")
     draw = ImageDraw.Draw(img)
