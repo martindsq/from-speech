@@ -42,16 +42,40 @@ class TinyMel(DataModule):
             mel_bins=mel_bins
         )
 
-        train_size = int(len(train_full_set) * 0.8)
-
         generator = torch.Generator().manual_seed(42)
-        indices = torch.randperm(len(train_full_set), generator=generator).tolist()
+        train_indices, val_indices = self._stratified_split_indices(
+            train_full_set.base_dataset.samples,
+            train_ratio=0.8,
+            generator=generator,
+        )
 
-        train_set = torch.utils.data.Subset(train_full_set, indices[:train_size])
-        val_set = torch.utils.data.Subset(val_full_set, indices[train_size:])
+        train_set = torch.utils.data.Subset(train_full_set, train_indices)
+        val_set = torch.utils.data.Subset(val_full_set, val_indices)
         
         super().__init__(batch_size, train_set, val_set, test_set)
         self._mel_prototypes = None
+
+    @staticmethod
+    def _stratified_split_indices(samples, train_ratio: float, generator: torch.Generator):
+        indices_by_label = {}
+        for index, (_, label) in enumerate(samples):
+            indices_by_label.setdefault(label, []).append(index)
+
+        train_indices = []
+        val_indices = []
+        for label in sorted(indices_by_label):
+            label_indices = indices_by_label[label]
+            permutation = torch.randperm(len(label_indices), generator=generator).tolist()
+            shuffled = [label_indices[i] for i in permutation]
+
+            train_size = int(round(len(shuffled) * train_ratio))
+            if len(shuffled) > 1:
+                train_size = min(max(train_size, 1), len(shuffled) - 1)
+
+            train_indices.extend(shuffled[:train_size])
+            val_indices.extend(shuffled[train_size:])
+
+        return train_indices, val_indices
 
     @property
     def classes(self):
