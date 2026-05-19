@@ -276,8 +276,10 @@ class CoWaver(TrainableModule):
     def optimizer(self, phase: int) -> torch.optim.Optimizer:
         if phase == 1:
             lrs = (3e-5, 3e-4, 1e-3)
-        else:
+        elif phase == 2:
             lrs = (3e-6, 1e-4, 3e-4)
+        else:
+            lrs = (3e-6, 5e-5, 1e-4)
         return AdamW(
             [
                 {"params": self.visual_encoder.parameters(), "lr": lrs[0]},
