@@ -191,18 +191,28 @@ class MixedTinyMel(DataModule):
         if self.proportions is None:
             return super().train_loader()
 
+        return self._proportional_loader(self.train_set, [len(data.train_set) for data in self.datamodules])
+
+    def val_loader(self) -> DataLoader:
+        if self.proportions is None:
+            return super().val_loader()
+
+        return self._proportional_loader(self.val_set, [len(data.val_set) for data in self.datamodules])
+
+    def _proportional_loader(self, dataset, dataset_lengths: list[int]) -> DataLoader:
         weights = []
-        for data, proportion in zip(self.datamodules, self.proportions):
-            weights.extend([proportion / len(data.train_set)] * len(data.train_set))
+        for dataset_length, proportion in zip(dataset_lengths, self.proportions):
+            weights.extend([proportion / dataset_length] * dataset_length)
 
         sampler = WeightedRandomSampler(
             weights,
-            num_samples=len(self.train_set),
+            num_samples=len(dataset),
             replacement=True,
+            generator=torch.Generator().manual_seed(42),
         )
 
         return DataLoader(
-            self.train_set,
+            dataset,
             batch_size=self.batch_size,
             sampler=sampler,
             collate_fn=self.collate_fn,
