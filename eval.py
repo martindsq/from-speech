@@ -59,6 +59,7 @@ def load_cowaver(cowaver: CoWaver):
         eval_cowaver(cowaver, letters, phones, words)
 
 load_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=24))
+# load_cowaver(CoWaver(latent_dim=384, hidden_size=256, mel_bins=80, width_steps=48))
 
 borrar_carpeta(tiny_letter_path)
 borrar_carpeta(tiny_phones_path)

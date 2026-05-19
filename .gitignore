@@ -6,6 +6,7 @@ venv/
 checkpoints/
 install.batch
 train.batch
+eval.batch
 *.out
 
 # Byte-compiled / optimized / DLL files

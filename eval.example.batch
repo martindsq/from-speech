@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --job-name=eval
+#SBATCH --ntasks=1
+#SBATCH --mem=2048
+#SBATCH --time=0:30:00
+#SBATCH --partition=normal
+#SBATCH --qos=gpu
+#SBATCH --output=eval.out
+#SBATCH --gres=gpu:1
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=YOUR_EMAIL_HERE
+
+source /clusteruy/home/$USER/miniconda3/bin/activate
+conda activate cowaver
+cd ~/cowaver
+python eval.py -d /scratch/$USER/
