@@ -30,7 +30,15 @@ tiny_phones_path = descomprimir_archivo(tiny_phones_xz_path, data_path)
 tiny_mswc_path = descomprimir_archivo(tiny_mswc_xz_path, data_path)
 dispositivo = encontrar_dispositivo()
 
-def eval_cowaver(cowaver: CoWaver):
+def eval_cowaver(cowaver: CoWaver, letters: TinyMel, phones: TinyMel, words: TinyMel): 
+    print(f"Evaluando en {tiny_letter_path.stem}", end="... ")
+    print(evaluar_red(cowaver, letters))
+    print(f"Evaluando en {tiny_phones_path.stem}", end="... ")
+    print(evaluar_red(cowaver, phones))
+    print(f"Evaluando en {tiny_mswc_path.stem}", end="... ")
+    print(evaluar_red(cowaver, words))
+
+def load_cowaver(cowaver: CoWaver):
     letters = TinyMel(
         base_dir=tiny_letter_path,
         mel_bins=cowaver.mel_bins,
@@ -46,14 +54,11 @@ def eval_cowaver(cowaver: CoWaver):
         mel_bins=cowaver.mel_bins,
         position=RandomPosition(mean=0.5, std=0.1)
     )
-    print(f"Evaluando en {tiny_letter_path.stem}", end="... ")
-    print(evaluar_red(cowaver, letters))
-    print(f"Evaluando en {tiny_phones_path.stem}", end="... ")
-    print(evaluar_red(cowaver, phones))
-    print(f"Evaluando en {tiny_mswc_path.stem}", end="... ")
-    print(evaluar_red(cowaver, words))
+    for i in range(3):
+        cargar_checkpoint(net=cowaver, device=dispositivo, phase=i+1, folder=checkpoints_path)
+        eval_cowaver(cowaver, letters, phones, words)
 
-eval_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=24))
+load_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=24))
 
 borrar_carpeta(tiny_letter_path)
 borrar_carpeta(tiny_phones_path)
