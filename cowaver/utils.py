@@ -35,7 +35,7 @@ def encontrar_dispositivo(silent: bool = False):
         El dispositivo encontrado.
     """
     if not silent:
-        print("Buscando dispositivo", end="...")
+        print("Buscando dispositivo", end="... ")
     if torch.cuda.is_available():
         dispositivo = device("cuda")
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -43,7 +43,7 @@ def encontrar_dispositivo(silent: bool = False):
     else:
         dispositivo = device("cpu")
     if not silent:
-        print(dispositivo)
+        print(dispositivo.type.upper())
     return dispositivo
 
 def mover_a_dispositivo(x: Tensor | nn.Module | tuple | list | Mapping, dispositivo: device | None = None):
@@ -77,15 +77,17 @@ def mover_a_dispositivo(x: Tensor | nn.Module | tuple | list | Mapping, disposit
 
 def descomprimir_archivo(archivo: Path, carpeta: Path) -> Path:
     ruta = carpeta / Path(archivo.stem).stem
+    print(f"Descomprimiendo {archivo} en {ruta}", end="... ")
     if not ruta.exists():
-        print(f"Descomprimiendo {archivo} en {ruta}", end="...")
         with tarfile.open(archivo, mode="r:xz") as tar:
             tar.extractall(path=carpeta)
         print("OK")
+    else:
+        print("YA EXISTE")
     return ruta
 
 def borrar_carpeta(carpeta: Path):
-    print(f"Borrando {carpeta}", end="...")
+    print(f"Borrando {carpeta}", end="... ")
     shutil.rmtree(carpeta)
     print("OK")
 

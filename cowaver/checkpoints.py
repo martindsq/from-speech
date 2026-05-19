@@ -26,7 +26,7 @@ def ruta_al_checkpoint(net: TrainableModule, phase: int, folder: Path):
 
 def guardar_checkpoint(net: TrainableModule, train_history: TrainHistory, phase: int = 1, folder: Path = CHECKPOINTS_ROOT):
     path = ruta_al_checkpoint(net, phase, folder)
-    print(f"Guardando checkpoint en {path}", end="...")
+    print(f"Guardando checkpoint en {path}", end="... ")
     path.parent.mkdir(parents=True, exist_ok=True)
     ckpt = {
         "model": net.state_dict(),
