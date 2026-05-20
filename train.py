@@ -8,6 +8,7 @@ from cowaver.utils import (
     descomprimir_archivo,
     encontrar_dispositivo,
     entrenar_red,
+    evaluar_red,
     borrar_carpeta
 )
 from cowaver.checkpoints import cargar_checkpoint
