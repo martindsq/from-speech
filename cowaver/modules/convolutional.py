@@ -1,25 +1,21 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from collections import OrderedDict
 from torch import Tensor
-from torch.optim import Optimizer, SGD, AdamW
+from torch.optim import Optimizer, AdamW
 from torch.optim.lr_scheduler import LRScheduler, StepLR
-from .models import TrainableModule, DataModule, TestResults
+from .cornet import CORnet_Z
+from ..models import TrainableModule, DataModule, TestResults
 
-class Flatten(nn.Module):
-    """
-    Helper module for flattening input tensor to 1-D for the use in Linear modules
-    """
-    def forward(self, x):
-        return x.view(x.size(0), -1)
 
-class Identity(nn.Module):
-    """
-    Helper module that stores the current tensor. Useful for accessing by name
-    """
-    def forward(self, x):
-        return x
+def unpack_batch(batch):
+    if len(batch) == 2:
+        (x, y), labels = batch
+        task_ids = None
+    else:
+        (x, y), labels, task_ids = batch
+    return x, y.squeeze(1), labels, task_ids
+
 
 class ResidualTemporalBlock(nn.Module):
     def __init__(self, channels: int, kernel_size: int = 5, dilation: int = 1):
@@ -35,58 +31,6 @@ class ResidualTemporalBlock(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         return x + self.block(x)
 
-class CORblock_Z(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1):
-        super().__init__()
-        self.conv = nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=kernel_size // 2
-        )
-        self.nonlin = nn.ReLU(inplace=True)
-        self.pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.output = Identity()  # for an easy access to this block's output
-
-    def forward(self, inp):
-        x = self.conv(inp)
-        x = self.nonlin(x)
-        x = self.pool(x)
-        x = self.output(x)  # for an easy access to this block's output
-        return x
-
-def CORnet_Z():
-    model = nn.Sequential(OrderedDict([
-        ('V1', CORblock_Z(3, 64, kernel_size=7, stride=2)),
-        ('V2', CORblock_Z(64, 128)),
-        ('V4', CORblock_Z(128, 256)),
-        ('IT', CORblock_Z(256, 512)),
-        ('decoder', nn.Sequential(OrderedDict([
-            ('avgpool', nn.AdaptiveAvgPool2d(1)),
-            ('flatten', Flatten()),
-            ('linear', nn.Linear(512, 1000)),
-            ('output', Identity())
-            ])))
-        ]))
-
-    # weight initialization
-    for m in model.modules():
-        if isinstance(m, (nn.Conv2d, nn.Linear)):
-            nn.init.xavier_uniform_(m.weight)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.BatchNorm2d):
-            m.weight.data.fill_(1)
-            m.bias.data.zero_()
-
-    model = nn.DataParallel(model)
-
-    url = 'https://s3.amazonaws.com/cornet-models/cornet_z-5c427c9c.pth'
-    ckpt_data = torch.utils.model_zoo.load_url(url, map_location=torch.device('cpu'))
-    model.load_state_dict(ckpt_data['state_dict'])
-  
-    return model
 
 class ImageToHorizontalFeatures(nn.Module):
     def __init__(self, feature_dim: int = 256, width_steps: int = 24, height_bands: int = 4):
@@ -102,14 +46,14 @@ class ImageToHorizontalFeatures(nn.Module):
 
     def forward(self, x):
         """Makes an inference.
-        
+
         Parameters
         ----------
         x: Tensor
             Un tensor de forma [B, C, H, W] donde B es el tamaño del batch, C
-            es el número de canales (tipicamente 3), H y W la altura y el ancho 
+            es el número de canales (tipicamente 3), H y W la altura y el ancho
             de las imágenes respectivamente. Se puede omitir B.
-        
+
         Returns
         ------
         h: Tensor
@@ -137,6 +81,7 @@ class ImageToHorizontalFeatures(nn.Module):
         features = self.projector(features)
         return features.transpose(1, 2)
 
+
 class TemporalAdapter(nn.Module):
     def __init__(self, input_dim: int = 256, latent_dim: int = 256):
         super().__init__()
@@ -154,6 +99,7 @@ class TemporalAdapter(nn.Module):
         x = self.in_proj(x)
         x = self.blocks(x)
         return x.transpose(1, 2)
+
 
 class HorizontalFeaturesToMel(nn.Module):
     def __init__(self, latent_dim: int = 256, hidden_size: int = 256, mel_bins: int = 40, seq_len: int = 49):
@@ -173,12 +119,12 @@ class HorizontalFeaturesToMel(nn.Module):
 
     def forward(self, z: Tensor):
         """Makes an inference.
-        
+
         Parameters
         ----------
         z: Tensor
             Un tensor de forma [B, seq_len, latent_dim]. Se puede omitir B.
-        
+
         Returns
         ------
         mel: Tensor
@@ -201,7 +147,8 @@ class HorizontalFeaturesToMel(nn.Module):
         mel = self.out_proj(x)
         return mel
 
-class CoWaver(TrainableModule):
+
+class CoWaverConvolutional(TrainableModule):
     def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24):
         super().__init__(name=f"cowaver_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}")
         self.mel_bins = mel_bins
@@ -222,14 +169,14 @@ class CoWaver(TrainableModule):
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         """Hace una inferencia.
-        
+
         Parameters
         ----------
         x: Tensor
             Un tensor de forma [B, C, H, W] donde B es el tamaño del batch, C
-            es el número de canales (tipicamente 3), H y W la altura y el ancho 
+            es el número de canales (tipicamente 3), H y W la altura y el ancho
             de las imágenes respectivamente. Se puede omitir B.
-        
+
         Returns
         ------
         mel: Tensor
@@ -245,14 +192,13 @@ class CoWaver(TrainableModule):
         return mel, z
 
     def training_step(self, batch, batch_idx, phase: int):
-        (x, y), _ = batch
-        y = y.squeeze(1)
+        x, y, _, _ = unpack_batch(batch)
         y_hat, _ = self(x)
         loss = F.l1_loss(y_hat, y)
         return loss
 
     def test_step(self, data: DataModule, batch: tuple) -> TestResults:
-        (x, _), targets = batch
+        x, _, targets, _ = unpack_batch(batch)
         y_hat, _ = self(x)
         prototypes = data.mel_prototypes(y_hat.device)
 
@@ -270,7 +216,7 @@ class CoWaver(TrainableModule):
         return TestResults(top1=top1, top3=top3, top5=top5)
 
     def inference_step(self, batch: tuple) -> tuple[Tensor, Tensor]:
-        (x, _), _ = batch
+        x, _, _, _ = unpack_batch(batch)
         return self(x)
 
     def optimizer(self, phase: int) -> torch.optim.Optimizer:
@@ -288,6 +234,6 @@ class CoWaver(TrainableModule):
             ],
             weight_decay=1e-4
         )
-    
-    def scheduler(self, optimizer: Optimizer, phase: int) -> LRScheduler: 
+
+    def scheduler(self, optimizer: Optimizer, phase: int) -> LRScheduler:
         return StepLR(optimizer, step_size=10, gamma=0.5)

@@ -5,7 +5,7 @@
 #SBATCH --time=2:00:00
 #SBATCH --partition=normal
 #SBATCH --qos=gpu
-#SBATCH --output=train.out
+#SBATCH --output=train-convolutional-c.out
 #SBATCH --gres=gpu:1
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=YOUR_EMAIL_HERE
@@ -13,4 +13,33 @@
 source /clusteruy/home/$USER/miniconda3/bin/activate
 conda activate cowaver
 cd ~/cowaver
-python train.py -d /scratch/$USER/
+
+# Architectures:
+#   convolutional, recurrent, transformer, conditioned, dual-route
+#
+# Training schemes:
+#   B: mswc -> mswc -> mswc
+#      --phase1-proportions 0 0 1
+#      --phase2-proportions 0 0 1
+#      --phase3-proportions 0 0 1
+#
+#   C: letters -> letters+phones -> letters+phones+mswc
+#      --phase1-proportions 1 0 0
+#      --phase2-proportions 0.25 0.75 0
+#      --phase3-proportions 0.10 0.15 0.75
+#
+#   C-balanced: same curriculum with a less MSWC-dominant final phase
+#      --phase1-proportions 1 0 0
+#      --phase2-proportions 0.25 0.75 0
+#      --phase3-proportions 0.20 0.30 0.50
+
+ARCHITECTURE=convolutional
+SCHEME=c
+
+python train.py \
+  -d /scratch/$USER/$ARCHITECTURE/$SCHEME/ \
+  -c checkpoints/$ARCHITECTURE/$SCHEME/ \
+  --architecture $ARCHITECTURE \
+  --phase1-proportions 1 0 0 \
+  --phase2-proportions 0.25 0.75 0 \
+  --phase3-proportions 0.10 0.15 0.75

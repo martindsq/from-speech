@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 from torchvision.transforms import Compose
 from cowaver.datamodules import TinyMel, MixedTinyMel
-from cowaver.modules import CoWaver
+from cowaver.modules import MODEL_REGISTRY, CoWaver, build_model
 from cowaver.transforms import RandomAlign, RandomPosition, RandomScene
 from cowaver.utils import (
     descomprimir_archivo,
@@ -16,6 +16,12 @@ from cowaver.checkpoints import cargar_checkpoint
 parser = argparse.ArgumentParser()
 parser.add_argument('--data', '-d', default="data")
 parser.add_argument('--checkpoints', '-c', default="checkpoints")
+parser.add_argument(
+    "--architecture",
+    "-a",
+    choices=sorted(MODEL_REGISTRY),
+    default="convolutional",
+)
 parser.add_argument(
     "--phase1-proportions",
     nargs=3,
@@ -40,9 +46,11 @@ parser.add_argument(
 args = parser.parse_args()
 data_path = Path(args.data)
 checkpoints_path = Path(args.checkpoints)
+data_path.mkdir(parents=True, exist_ok=True)
 
 print("--data", data_path)
 print("--checkpoints", checkpoints_path)
+print("--architecture", args.architecture)
 print("--phase1-proportions", args.phase1_proportions)
 print("--phase2-proportions", args.phase2_proportions)
 print("--phase3-proportions", args.phase3_proportions)
@@ -88,17 +96,20 @@ def train_cowaver(cowaver: CoWaver):
     letters = TinyMel(
         base_dir=tiny_letter_path,
         mel_bins=cowaver.mel_bins,
-        position=RandomPosition(mean=0.5, std=0.1)
+        position=RandomPosition(mean=0.5, std=0.1),
+        task_id=0
     )
     phones = TinyMel(
         base_dir=tiny_phones_path,
         mel_bins=cowaver.mel_bins,
-        position=RandomPosition(mean=0.5, std=0.1)
+        position=RandomPosition(mean=0.5, std=0.1),
+        task_id=1
     )
     words = TinyMel(
         base_dir=tiny_mswc_path,
         mel_bins=cowaver.mel_bins,
-        position=RandomPosition(mean=0.5, std=0.1)
+        position=RandomPosition(mean=0.5, std=0.1),
+        task_id=2
     )
     entrenar_red(
 	net=cowaver,
@@ -128,7 +139,7 @@ def train_cowaver(cowaver: CoWaver):
     )
     eval_cowaver(cowaver, letters, phones, words)
 
-train_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=24))
+train_cowaver(build_model(args.architecture, latent_dim=256, hidden_size=256, mel_bins=80, width_steps=24))
 
 borrar_carpeta(tiny_letter_path)
 borrar_carpeta(tiny_phones_path)

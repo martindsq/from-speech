@@ -19,27 +19,31 @@ class TinyMel(DataModule):
         Position of stimuli in image used only for the training split. Defaults
         to None (centered).
     """
-    def __init__(self, base_dir: str, mel_bins: int = 40, transform: Module | None = None, position: RandomPosition | None = None):
+    def __init__(self, base_dir: str, mel_bins: int = 40, transform: Module | None = None, position: RandomPosition | None = None, task_id: int | None = None):
         batch_size = 32
+        self.task_id = task_id
         train_full_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
                 base_dir / "train",
                 transform=transform
             ),
             position=position,
-            mel_bins=mel_bins
+            mel_bins=mel_bins,
+            task_id=task_id
         )
         val_full_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
                 base_dir / "train"
             ),
-            mel_bins=mel_bins
+            mel_bins=mel_bins,
+            task_id=task_id
         )
         test_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
                 base_dir / "test"
             ),
-            mel_bins=mel_bins
+            mel_bins=mel_bins,
+            task_id=task_id
         )
 
         generator = torch.Generator().manual_seed(42)
@@ -82,22 +86,23 @@ class TinyMel(DataModule):
         return self.test_set.classes
 
     def elements_from_batch(self, batch):
-        (images, mels), _ = batch
+        (images, mels) = batch[0]
         return (images, mels)
 
     def labels_from_batch(self, batch):
-        _, labels = batch
-        return labels
+        return batch[1]
 
     def mel_prototypes(self, dispositivo=None):
         if self._mel_prototypes is None:
-            (_, mel0), label0 = self.test_set[0]
+            item0 = self.test_set[0]
+            (_, mel0), label0 = item0[:2]
             mel0 = mel0.squeeze(0)
             num_classes = len(self.classes)
             sums = torch.zeros((num_classes, *mel0.shape), dtype=mel0.dtype)
             counts = torch.zeros(num_classes, dtype=torch.long)
 
-            for (_, mel), label in self.test_set:
+            for item in self.test_set:
+                (_, mel), label = item[:2]
                 mel = mel.squeeze(0)
                 sums[label] += mel
                 counts[label] += 1
@@ -180,12 +185,11 @@ class MixedTinyMel(DataModule):
         return self._classes
 
     def elements_from_batch(self, batch):
-        (images, mels), _ = batch
+        (images, mels) = batch[0]
         return (images, mels)
 
     def labels_from_batch(self, batch):
-        _, labels = batch
-        return labels
+        return batch[1]
 
     def train_loader(self) -> DataLoader:
         if self.proportions is None:
@@ -220,13 +224,15 @@ class MixedTinyMel(DataModule):
 
     def mel_prototypes(self, dispositivo=None):
         if self._mel_prototypes is None:
-            (_, mel0), _ = self.test_set[0]
+            item0 = self.test_set[0]
+            (_, mel0), _ = item0[:2]
             mel0 = mel0.squeeze(0)
             num_classes = len(self.classes)
             sums = torch.zeros((num_classes, *mel0.shape), dtype=mel0.dtype)
             counts = torch.zeros(num_classes, dtype=torch.long)
 
-            for (_, mel), label in self.test_set:
+            for item in self.test_set:
+                (_, mel), label = item[:2]
                 mel = mel.squeeze(0)
                 sums[label] += mel
                 counts[label] += 1

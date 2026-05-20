@@ -40,10 +40,11 @@ class TinySpeakDataset(Dataset):
         return waveform, target
 
 class ImageMelDataset(Dataset):
-    def __init__(self, base_dataset: TinySpeakDataset, position: RandomPosition | None = None, mel_bins: int = 40):
+    def __init__(self, base_dataset: TinySpeakDataset, position: RandomPosition | None = None, mel_bins: int = 40, task_id: int | None = None):
         self.base_dataset = base_dataset
         self.position = position
         self.mel_bins = mel_bins
+        self.task_id = task_id
 
     def __len__(self):
         return len(self.base_dataset)
@@ -62,7 +63,9 @@ class ImageMelDataset(Dataset):
             x_stride, y_stride = self.position()
         image = make_image(word, x_stride, y_stride)
 
-        return (image, mel), target
+        if self.task_id is None:
+            return (image, mel), target
+        return (image, mel), target, self.task_id
 
 
 class RelabeledDataset(Dataset):
@@ -79,5 +82,9 @@ class RelabeledDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, index):
-        elements, label = self.dataset[index]
-        return elements, label + self.label_offset
+        item = self.dataset[index]
+        if len(item) == 2:
+            elements, label = item
+            return elements, label + self.label_offset
+        elements, label, task_id = item
+        return elements, label + self.label_offset, task_id

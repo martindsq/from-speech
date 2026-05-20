@@ -1,8 +1,7 @@
 from torch import load, device, save
 from pathlib import Path
 from dataclasses import asdict
-from .modules import TrainableModule
-from .models import TrainHistory
+from .models import TrainHistory, TrainableModule
 
 CHECKPOINTS_ROOT = Path('checkpoints')
 

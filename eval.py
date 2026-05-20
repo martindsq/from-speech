@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 from cowaver.datamodules import TinyMel
-from cowaver.modules import CoWaver
+from cowaver.modules import MODEL_REGISTRY, CoWaver, build_model
 from cowaver.transforms import RandomAlign, RandomPosition, RandomScene
 from cowaver.utils import (
     descomprimir_archivo,
@@ -14,12 +14,20 @@ from cowaver.checkpoints import fases_disponibles, cargar_checkpoint
 parser = argparse.ArgumentParser()
 parser.add_argument('--data', '-d', default="data")
 parser.add_argument('--checkpoints', '-c', default="checkpoints")
+parser.add_argument(
+    "--architecture",
+    "-a",
+    choices=sorted(MODEL_REGISTRY),
+    default="convolutional",
+)
 args = parser.parse_args()
 data_path = Path(args.data)
 checkpoints_path = Path(args.checkpoints)
+data_path.mkdir(parents=True, exist_ok=True)
 
 print("--data", data_path)
 print("--checkpoints", checkpoints_path)
+print("--architecture", args.architecture)
 
 tiny_letter_xz_path = Path("tiny-letter-30.tar.xz")
 tiny_phones_xz_path = Path("tiny-phones-200.tar.xz")
@@ -42,23 +50,26 @@ def load_cowaver(cowaver: CoWaver):
     letters = TinyMel(
         base_dir=tiny_letter_path,
         mel_bins=cowaver.mel_bins,
-        position=RandomPosition(mean=0.5, std=0.1)
+        position=RandomPosition(mean=0.5, std=0.1),
+        task_id=0
     )
     phones = TinyMel(
         base_dir=tiny_phones_path,
         mel_bins=cowaver.mel_bins,
-        position=RandomPosition(mean=0.5, std=0.1)
+        position=RandomPosition(mean=0.5, std=0.1),
+        task_id=1
     )
     words = TinyMel(
         base_dir=tiny_mswc_path,
         mel_bins=cowaver.mel_bins,
-        position=RandomPosition(mean=0.5, std=0.1)
+        position=RandomPosition(mean=0.5, std=0.1),
+        task_id=2
     )
     for i in range(3):
         cargar_checkpoint(net=cowaver, device=dispositivo, phase=i+1, folder=checkpoints_path)
         eval_cowaver(cowaver, letters, phones, words)
 
-load_cowaver(CoWaver(latent_dim=256, hidden_size=256, mel_bins=80, width_steps=24))
+load_cowaver(build_model(args.architecture, latent_dim=256, hidden_size=256, mel_bins=80, width_steps=24))
 # load_cowaver(CoWaver(latent_dim=384, hidden_size=256, mel_bins=80, width_steps=48))
 
 borrar_carpeta(tiny_letter_path)
