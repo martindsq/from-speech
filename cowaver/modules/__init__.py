@@ -2,12 +2,20 @@ from .conditioned import CoWaverConditioned
 from .dual_route import CoWaverDualRoute
 from .recurrent import CoWaverRecurrent
 from .cornet import CORblock_Z, CORnet_Z, Flatten, Identity
+from .common import ResidualTemporalBlock, unpack_batch
 from .convolutional import (
     CoWaverConvolutional,
-    HorizontalFeaturesToMel,
     ImageToHorizontalFeatures,
-    ResidualTemporalBlock,
     TemporalAdapter,
+)
+from .decoders import (
+    DECODER_REGISTRY,
+    ConvolutionalMelDecoder,
+    HorizontalFeaturesToMel,
+    RecurrentMelDecoder,
+    TransformerMelDecoder,
+    UpsamplingMelDecoder,
+    build_decoder,
 )
 from .transformer import CoWaverTransformer
 
@@ -40,12 +48,19 @@ __all__ = [
     "CoWaverRecurrent",
     "CoWaverConvolutional",
     "CoWaverTransformer",
+    "ConvolutionalMelDecoder",
+    "DECODER_REGISTRY",
     "Flatten",
     "HorizontalFeaturesToMel",
     "Identity",
     "ImageToHorizontalFeatures",
     "MODEL_REGISTRY",
+    "RecurrentMelDecoder",
     "ResidualTemporalBlock",
     "TemporalAdapter",
+    "TransformerMelDecoder",
+    "UpsamplingMelDecoder",
+    "build_decoder",
     "build_model",
+    "unpack_batch",
 ]

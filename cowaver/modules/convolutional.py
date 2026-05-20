@@ -4,32 +4,10 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.optim import Optimizer, AdamW
 from torch.optim.lr_scheduler import LRScheduler, StepLR
+from .common import ResidualTemporalBlock, unpack_batch
 from .cornet import CORnet_Z
+from .decoders import build_decoder
 from ..models import TrainableModule, DataModule, TestResults
-
-
-def unpack_batch(batch):
-    if len(batch) == 2:
-        (x, y), labels = batch
-        task_ids = None
-    else:
-        (x, y), labels, task_ids = batch
-    return x, y.squeeze(1), labels, task_ids
-
-
-class ResidualTemporalBlock(nn.Module):
-    def __init__(self, channels: int, kernel_size: int = 5, dilation: int = 1):
-        super().__init__()
-        padding = dilation * (kernel_size // 2)
-        self.block = nn.Sequential(
-            nn.Conv1d(channels, channels, kernel_size=kernel_size, padding=padding, dilation=dilation),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(channels, channels, kernel_size=kernel_size, padding=padding, dilation=dilation),
-            nn.ReLU(inplace=True),
-        )
-
-    def forward(self, x: Tensor) -> Tensor:
-        return x + self.block(x)
 
 
 class ImageToHorizontalFeatures(nn.Module):
@@ -101,56 +79,10 @@ class TemporalAdapter(nn.Module):
         return x.transpose(1, 2)
 
 
-class HorizontalFeaturesToMel(nn.Module):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, mel_bins: int = 40, seq_len: int = 49):
-        super().__init__()
-        self.seq_len = seq_len
-
-        self.in_proj = nn.Conv1d(latent_dim, hidden_size, kernel_size=1)
-        self.pre_blocks = nn.Sequential(
-            ResidualTemporalBlock(hidden_size, kernel_size=5, dilation=1),
-            ResidualTemporalBlock(hidden_size, kernel_size=5, dilation=2),
-        )
-        self.post_blocks = nn.Sequential(
-            ResidualTemporalBlock(hidden_size, kernel_size=5, dilation=1),
-            ResidualTemporalBlock(hidden_size, kernel_size=3, dilation=1),
-        )
-        self.out_proj = nn.Conv1d(hidden_size, mel_bins, kernel_size=1)
-
-    def forward(self, z: Tensor):
-        """Makes an inference.
-
-        Parameters
-        ----------
-        z: Tensor
-            Un tensor de forma [B, seq_len, latent_dim]. Se puede omitir B.
-
-        Returns
-        ------
-        mel: Tensor
-            Un tensor de forma [B, mel_bins, seq_len]. B es igual a 1 si se
-            omitió en x.
-        """
-        if z.dim() == 2:
-            z = z.unsqueeze(0)
-
-        x = z.transpose(1, 2)
-        x = self.in_proj(x)
-        x = self.pre_blocks(x)
-        x = F.interpolate(
-            x,
-            size=self.seq_len,
-            mode="linear",
-            align_corners=False
-        )
-        x = self.post_blocks(x)
-        mel = self.out_proj(x)
-        return mel
-
-
 class CoWaverConvolutional(TrainableModule):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24):
-        super().__init__(name=f"cowaver_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}")
+    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, decoder: str = "convolutional"):
+        decoder_suffix = "" if decoder == "convolutional" else f"_dc{decoder.replace('-', '_')}"
+        super().__init__(name=f"cowaver_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{decoder_suffix}")
         self.mel_bins = mel_bins
         self.visual_encoder = ImageToHorizontalFeatures(
             feature_dim=latent_dim,
@@ -160,7 +92,8 @@ class CoWaverConvolutional(TrainableModule):
             input_dim=latent_dim,
             latent_dim=latent_dim,
         )
-        self.decoder = HorizontalFeaturesToMel(
+        self.decoder = build_decoder(
+            decoder,
             latent_dim=latent_dim,
             hidden_size=hidden_size,
             mel_bins=mel_bins,

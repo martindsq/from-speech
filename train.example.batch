@@ -17,6 +17,9 @@ cd ~/cowaver
 # Architectures:
 #   convolutional, recurrent, transformer, conditioned, dual-route
 #
+# Decoders:
+#   convolutional, recurrent, transformer, upsampling
+#
 # Training schemes:
 #   B: mswc -> mswc -> mswc
 #      --phase1-proportions 0 0 1
@@ -34,12 +37,14 @@ cd ~/cowaver
 #      --phase3-proportions 0.20 0.30 0.50
 
 ARCHITECTURE=convolutional
+DECODER=convolutional
 SCHEME=c
 
 python train.py \
-  -d /scratch/$USER/$ARCHITECTURE/$SCHEME/ \
-  -c checkpoints/$ARCHITECTURE/$SCHEME/ \
+  -d /scratch/$USER/$ARCHITECTURE/$DECODER/$SCHEME/ \
+  -c checkpoints/$ARCHITECTURE/$DECODER/$SCHEME/ \
   --architecture $ARCHITECTURE \
+  --decoder $DECODER \
   --phase1-proportions 1 0 0 \
   --phase2-proportions 0.25 0.75 0 \
   --phase3-proportions 0.10 0.15 0.75

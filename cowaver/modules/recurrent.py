@@ -4,11 +4,9 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.optim import Optimizer, AdamW
 from torch.optim.lr_scheduler import LRScheduler, StepLR
-from .convolutional import (
-    HorizontalFeaturesToMel,
-    ImageToHorizontalFeatures,
-    unpack_batch,
-)
+from .common import unpack_batch
+from .convolutional import ImageToHorizontalFeatures
+from .decoders import build_decoder
 from ..models import DataModule, TestResults, TrainableModule
 
 
@@ -35,8 +33,9 @@ class RecurrentAdapter(nn.Module):
 
 
 class CoWaverRecurrent(TrainableModule):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24):
-        super().__init__(name=f"cowaver_recurrent_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}")
+    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, decoder: str = "convolutional"):
+        decoder_suffix = "" if decoder == "convolutional" else f"_dc{decoder.replace('-', '_')}"
+        super().__init__(name=f"cowaver_recurrent_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{decoder_suffix}")
         self.mel_bins = mel_bins
         self.visual_encoder = ImageToHorizontalFeatures(
             feature_dim=latent_dim,
@@ -46,7 +45,8 @@ class CoWaverRecurrent(TrainableModule):
             input_dim=latent_dim,
             latent_dim=latent_dim,
         )
-        self.decoder = HorizontalFeaturesToMel(
+        self.decoder = build_decoder(
+            decoder,
             latent_dim=latent_dim,
             hidden_size=hidden_size,
             mel_bins=mel_bins,
