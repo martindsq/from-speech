@@ -1,0 +1,37 @@
+#!/bin/bash
+#SBATCH --ntasks=1
+#SBATCH --mem=2048
+#SBATCH --time=2:00:00
+#SBATCH --partition=normal
+#SBATCH --qos=gpu
+#SBATCH --output=%x.out
+#SBATCH --gres=gpu:1
+#SBATCH --mail-type=ALL
+
+source /clusteruy/home/$USER/miniconda3/bin/activate
+conda activate cowaver
+cd ~/cowaver
+
+# Architectures:
+#   convolutional, recurrent, transformer, conditioned, dual-route
+#
+# Decoders:
+#   convolutional, recurrent, transformer
+#
+# Proportions:
+#   letters, phonetized words, words
+#
+# Example:
+#   sbatch --job-name=MY_JOB_NAME --mail-user=MY_EMAIL train.batch dual-route convolutional
+
+ARCHITECTURE=${1:?Missing architecture}
+DECODER=${2:?Missing decoder}
+
+python train.py \
+  -d /scratch/$USER/C/$ARCHITECTURE/$DECODER/ \
+  -c checkpoints/C/$ARCHITECTURE/$DECODER/ \
+  --architecture $ARCHITECTURE \
+  --decoder $DECODER \
+  --phase1-proportions 1 0 0 \
+  --phase2-proportions 0.25 0.75 0 \
+  --phase3-proportions 0.10 0.15 0.75

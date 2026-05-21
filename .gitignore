@@ -5,8 +5,8 @@ data/
 venv/
 checkpoints/
 install.batch
-train.batch
 eval.batch
+train.sh
 *.out
 kalulu-phonemes.tar.xz
 tiny-letter-30.tar.xz
