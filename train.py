@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 from torchvision.transforms import Compose
 from cowaver.datamodules import TinyMel, MixedTinyMel
-from cowaver.modules import DECODER_REGISTRY, MODEL_REGISTRY, CoWaver, build_model
+from cowaver.modules import DECODER_REGISTRY, MODEL_REGISTRY, TEMPORAL_ADAPTER_REGISTRY, CoWaver, build_model
 from cowaver.transforms import RandomAlign, RandomPosition, RandomScene
 from cowaver.utils import (
     descomprimir_archivo,
@@ -14,17 +14,25 @@ from cowaver.utils import (
 from cowaver.checkpoints import cargar_checkpoint
 
 parser = argparse.ArgumentParser()
+# Available architectures: unconditioned, conditioned, dual-route
+# Available temporal adapters: convolutional, recurrent, transformer
+# Available decoders: convolutional, recurrent, transformer
 parser.add_argument('--data', '-d', default="data")
 parser.add_argument('--checkpoints', '-c', default="checkpoints")
 parser.add_argument(
     "--architecture",
     "-a",
     choices=sorted(MODEL_REGISTRY),
-    default="convolutional",
+    default="unconditioned",
 )
 parser.add_argument(
     "--decoder",
     choices=sorted(DECODER_REGISTRY),
+    default="convolutional",
+)
+parser.add_argument(
+    "--adapter",
+    choices=sorted(TEMPORAL_ADAPTER_REGISTRY),
     default="convolutional",
 )
 parser.add_argument(
@@ -56,6 +64,7 @@ data_path.mkdir(parents=True, exist_ok=True)
 print("--data", data_path)
 print("--checkpoints", checkpoints_path)
 print("--architecture", args.architecture)
+print("--adapter", args.adapter)
 print("--decoder", args.decoder)
 print("--phase1-proportions", args.phase1_proportions)
 print("--phase2-proportions", args.phase2_proportions)
@@ -145,7 +154,17 @@ def train_cowaver(cowaver: CoWaver):
     )
     eval_cowaver(cowaver, letters, phones, words)
 
-train_cowaver(build_model(args.architecture, latent_dim=256, hidden_size=256, mel_bins=80, width_steps=24, decoder=args.decoder))
+model_kwargs = {
+    "latent_dim": 256,
+    "hidden_size": 256,
+    "mel_bins": 80,
+    "width_steps": 24,
+    "decoder": args.decoder,
+}
+if args.adapter is not None:
+    model_kwargs["adapter"] = args.adapter
+
+train_cowaver(build_model(args.architecture, **model_kwargs))
 
 borrar_carpeta(tiny_letter_path)
 borrar_carpeta(tiny_phones_path)

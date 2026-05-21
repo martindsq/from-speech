@@ -1,13 +1,17 @@
 from .conditioned import CoWaverConditioned
 from .dual_route import CoWaverDualRoute
-from .recurrent import CoWaverRecurrent
+from .adapters import (
+    ConvolutionalTemporalAdapter,
+    RecurrentAdapter,
+    RecurrentTemporalAdapter,
+    TEMPORAL_ADAPTER_REGISTRY,
+    TemporalAdapter,
+    TransformerAdapter,
+    TransformerTemporalAdapter,
+    build_temporal_adapter,
+)
 from .cornet import CORblock_Z, CORnet_Z, Flatten, Identity
 from .common import ResidualTemporalBlock, unpack_batch
-from .convolutional import (
-    CoWaverConvolutional,
-    ImageToHorizontalFeatures,
-    TemporalAdapter,
-)
 from .decoders import (
     DECODER_REGISTRY,
     ConvolutionalMelDecoder,
@@ -16,20 +20,18 @@ from .decoders import (
     TransformerMelDecoder,
     build_decoder,
 )
-from .transformer import CoWaverTransformer
+from .unconditioned import CoWaverUnconditioned, ImageToHorizontalFeatures
 
-CoWaver = CoWaverConvolutional
+CoWaver = CoWaverUnconditioned
 
 MODEL_REGISTRY = {
-    "convolutional": CoWaverConvolutional,
-    "transformer": CoWaverTransformer,
-    "recurrent": CoWaverRecurrent,
+    "unconditioned": CoWaverUnconditioned,
     "dual-route": CoWaverDualRoute,
     "conditioned": CoWaverConditioned,
 }
 
 
-def build_model(architecture: str = "convolutional", **kwargs):
+def build_model(architecture: str = "unconditioned", **kwargs):
     try:
         model_cls = MODEL_REGISTRY[architecture]
     except KeyError as exc:
@@ -44,10 +46,9 @@ __all__ = [
     "CoWaver",
     "CoWaverConditioned",
     "CoWaverDualRoute",
-    "CoWaverRecurrent",
-    "CoWaverConvolutional",
-    "CoWaverTransformer",
+    "CoWaverUnconditioned",
     "ConvolutionalMelDecoder",
+    "ConvolutionalTemporalAdapter",
     "DECODER_REGISTRY",
     "Flatten",
     "HorizontalFeaturesToMel",
@@ -55,10 +56,16 @@ __all__ = [
     "ImageToHorizontalFeatures",
     "MODEL_REGISTRY",
     "RecurrentMelDecoder",
+    "RecurrentAdapter",
+    "RecurrentTemporalAdapter",
     "ResidualTemporalBlock",
+    "TEMPORAL_ADAPTER_REGISTRY",
     "TemporalAdapter",
+    "TransformerAdapter",
     "TransformerMelDecoder",
+    "TransformerTemporalAdapter",
     "build_decoder",
     "build_model",
+    "build_temporal_adapter",
     "unpack_batch",
 ]

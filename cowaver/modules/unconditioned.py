@@ -4,10 +4,12 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.optim import Optimizer, AdamW
 from torch.optim.lr_scheduler import LRScheduler, StepLR
-from .common import ResidualTemporalBlock, unpack_batch
+
+from .adapters import build_temporal_adapter
+from .common import unpack_batch
 from .cornet import CORnet_Z
 from .decoders import build_decoder
-from ..models import TrainableModule, DataModule, TestResults
+from ..models import DataModule, TestResults, TrainableModule
 
 
 class ImageToHorizontalFeatures(nn.Module):
@@ -60,37 +62,21 @@ class ImageToHorizontalFeatures(nn.Module):
         return features.transpose(1, 2)
 
 
-class TemporalAdapter(nn.Module):
-    def __init__(self, input_dim: int = 256, latent_dim: int = 256):
-        super().__init__()
-        self.in_proj = nn.Conv1d(input_dim, latent_dim, kernel_size=1)
-        self.blocks = nn.Sequential(
-            ResidualTemporalBlock(latent_dim, kernel_size=5, dilation=1),
-            ResidualTemporalBlock(latent_dim, kernel_size=5, dilation=2),
-            ResidualTemporalBlock(latent_dim, kernel_size=3, dilation=1),
-        )
-
-    def forward(self, h: Tensor) -> Tensor:
-        if h.dim() == 2:
-            h = h.unsqueeze(0)
-        x = h.transpose(1, 2)
-        x = self.in_proj(x)
-        x = self.blocks(x)
-        return x.transpose(1, 2)
-
-
-class CoWaverConvolutional(TrainableModule):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, decoder: str = "convolutional"):
+class CoWaverUnconditioned(TrainableModule):
+    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, adapter: str = "convolutional", decoder: str = "convolutional", name_prefix: str = "cowaver_unconditioned"):
+        adapter_suffix = "" if adapter == "convolutional" else f"_ad{adapter.replace('-', '_')}"
         decoder_suffix = "" if decoder == "convolutional" else f"_dc{decoder.replace('-', '_')}"
-        super().__init__(name=f"cowaver_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{decoder_suffix}")
+        super().__init__(name=f"{name_prefix}_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{adapter_suffix}{decoder_suffix}")
         self.mel_bins = mel_bins
         self.visual_encoder = ImageToHorizontalFeatures(
             feature_dim=latent_dim,
             width_steps=width_steps
         )
-        self.adapter = TemporalAdapter(
+        self.adapter = build_temporal_adapter(
+            adapter,
             input_dim=latent_dim,
             latent_dim=latent_dim,
+            width_steps=width_steps,
         )
         self.decoder = build_decoder(
             decoder,
@@ -127,8 +113,7 @@ class CoWaverConvolutional(TrainableModule):
     def training_step(self, batch, batch_idx, phase: int):
         x, y, _, _ = unpack_batch(batch)
         y_hat, _ = self(x)
-        loss = F.l1_loss(y_hat, y)
-        return loss
+        return F.l1_loss(y_hat, y)
 
     def test_step(self, data: DataModule, batch: tuple) -> TestResults:
         x, _, targets, _ = unpack_batch(batch)

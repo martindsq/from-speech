@@ -51,18 +51,25 @@ python train.py \
   --data data \
   --checkpoints checkpoints \
   --architecture dual-route \
+  --adapter transformer \
   --decoder convolutional
 ```
 
 Arquitecturas disponibles:
 
-- `convolutional`
-- `recurrent`
-- `transformer`
+- `unconditioned`
 - `conditioned`
 - `dual-route`
 
+Usa `unconditioned` con `--adapter` para elegir el procesamiento temporal.
+
 Decoders disponibles:
+
+- `convolutional`
+- `recurrent`
+- `transformer`
+
+Adapters temporales disponibles:
 
 - `convolutional`
 - `recurrent`
@@ -88,6 +95,7 @@ python eval.py \
   --data data \
   --checkpoints checkpoints \
   --architecture dual-route \
+  --adapter transformer \
   --decoder convolutional
 ```
 
@@ -111,23 +119,25 @@ Instalar el entorno CUDA:
 sbatch install.batch
 ```
 
-Entrenar una combinacion de arquitectura y decoder:
+Entrenar una combinacion de arquitectura, decoder y adapter temporal:
 
 ```bash
-./train.sh dual-route convolutional
+./train.sh dual-route convolutional transformer
 ```
 
-`train.sh` envia `train.batch` con un nombre de job basado en la arquitectura y
-el decoder. `train.batch` guarda checkpoints en:
+Si se omite el adapter, usa `convolutional`.
+
+`train.sh` envia `train.batch` con un nombre de job basado en la arquitectura,
+el adapter y el decoder. `train.batch` guarda checkpoints en:
 
 ```text
-checkpoints/C/<architecture>/<decoder>/
+checkpoints/<architecture>/<adapter>/<decoder>/
 ```
 
 Evaluar checkpoints en Slurm:
 
 ```bash
-sbatch eval.batch
+sbatch eval.batch dual-route convolutional transformer
 ```
 
 ## Checkpoints y salidas

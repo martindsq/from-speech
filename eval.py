@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 from cowaver.datamodules import TinyMel
-from cowaver.modules import DECODER_REGISTRY, MODEL_REGISTRY, CoWaver, build_model
+from cowaver.modules import DECODER_REGISTRY, MODEL_REGISTRY, TEMPORAL_ADAPTER_REGISTRY, CoWaver, build_model
 from cowaver.transforms import RandomAlign, RandomPosition, RandomScene
 from cowaver.utils import (
     descomprimir_archivo,
@@ -18,11 +18,16 @@ parser.add_argument(
     "--architecture",
     "-a",
     choices=sorted(MODEL_REGISTRY),
-    default="convolutional",
+    default="unconditioned",
 )
 parser.add_argument(
     "--decoder",
     choices=sorted(DECODER_REGISTRY),
+    default="convolutional",
+)
+parser.add_argument(
+    "--adapter",
+    choices=sorted(TEMPORAL_ADAPTER_REGISTRY),
     default="convolutional",
 )
 args = parser.parse_args()
@@ -33,6 +38,7 @@ data_path.mkdir(parents=True, exist_ok=True)
 print("--data", data_path)
 print("--checkpoints", checkpoints_path)
 print("--architecture", args.architecture)
+print("--adapter", args.adapter)
 print("--decoder", args.decoder)
 
 tiny_letter_xz_path = Path("tiny-letter-30.tar.xz")
@@ -75,7 +81,17 @@ def load_cowaver(cowaver: CoWaver):
         cargar_checkpoint(net=cowaver, device=dispositivo, phase=i+1, folder=checkpoints_path)
         eval_cowaver(cowaver, letters, phones, words)
 
-load_cowaver(build_model(args.architecture, latent_dim=256, hidden_size=256, mel_bins=80, width_steps=24, decoder=args.decoder))
+model_kwargs = {
+    "latent_dim": 256,
+    "hidden_size": 256,
+    "mel_bins": 80,
+    "width_steps": 24,
+    "decoder": args.decoder,
+}
+if args.adapter is not None:
+    model_kwargs["adapter"] = args.adapter
+
+load_cowaver(build_model(args.architecture, **model_kwargs))
 # load_cowaver(CoWaver(latent_dim=384, hidden_size=256, mel_bins=80, width_steps=48))
 
 borrar_carpeta(tiny_letter_path)

@@ -4,25 +4,29 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.optim import Optimizer, AdamW
 from torch.optim.lr_scheduler import LRScheduler, StepLR
+from .adapters import build_temporal_adapter
 from .common import unpack_batch
-from .convolutional import ImageToHorizontalFeatures, TemporalAdapter
 from .decoders import build_decoder
+from .unconditioned import ImageToHorizontalFeatures
 from ..models import DataModule, TestResults, TrainableModule
 
 
 class CoWaverConditioned(TrainableModule):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, num_tasks: int = 2, decoder: str = "convolutional"):
+    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, num_tasks: int = 2, adapter: str = "convolutional", decoder: str = "convolutional"):
+        adapter_suffix = "" if adapter == "convolutional" else f"_ad{adapter.replace('-', '_')}"
         decoder_suffix = "" if decoder == "convolutional" else f"_dc{decoder.replace('-', '_')}"
-        super().__init__(name=f"cowaver_conditioned_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{decoder_suffix}")
+        super().__init__(name=f"cowaver_conditioned_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{adapter_suffix}{decoder_suffix}")
         self.mel_bins = mel_bins
         self.num_tasks = num_tasks
         self.visual_encoder = ImageToHorizontalFeatures(
             feature_dim=latent_dim,
             width_steps=width_steps
         )
-        self.adapter = TemporalAdapter(
+        self.adapter = build_temporal_adapter(
+            adapter,
             input_dim=latent_dim,
             latent_dim=latent_dim,
+            width_steps=width_steps,
         )
         self.task_embedding = nn.Embedding(num_tasks, latent_dim)
         self.decoder = build_decoder(

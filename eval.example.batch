@@ -13,4 +13,26 @@
 source /clusteruy/home/$USER/miniconda3/bin/activate
 conda activate cowaver
 cd ~/cowaver
-python eval.py -d /scratch/$USER/
+
+# Architectures:
+#   unconditioned, conditioned, dual-route
+#
+# Decoders:
+#   convolutional, recurrent, transformer
+#
+# Adapters:
+#   convolutional, recurrent, transformer
+#
+# Example:
+#   sbatch eval.batch dual-route convolutional transformer
+
+ARCHITECTURE=${1:-unconditioned}
+DECODER=${2:-convolutional}
+ADAPTER=${3:-convolutional}
+
+python eval.py \
+  -d /scratch/$USER/$ARCHITECTURE/$ADAPTER/$DECODER/ \
+  -c checkpoints/$ARCHITECTURE/$ADAPTER/$DECODER/ \
+  --architecture $ARCHITECTURE \
+  --adapter $ADAPTER \
+  --decoder $DECODER

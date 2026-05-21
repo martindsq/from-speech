@@ -19,9 +19,9 @@ El adaptador temporal transforma esta secuencia visual horizontal antes de decod
 
 | Arquitectura | Adaptador | Hipótesis principal |
 | :-- | :-- | :-- |
-| convolutional | convoluciones temporales 1D residuales | la composición local de izquierda a derecha alcanza |
-| recurrent | GRU bidireccional | el contexto secuencial ayuda al mapeo grafema-sonido |
-| transformer | codificador Transformer | las interacciones globales entre posiciones visuales ayudan a la composición |
+| unconditioned + adapter convolutional | convoluciones temporales 1D residuales | la composición local de izquierda a derecha alcanza |
+| unconditioned + adapter recurrent | GRU bidireccional | el contexto secuencial ayuda al mapeo grafema-sonido |
+| unconditioned + adapter transformer | codificador Transformer | las interacciones globales entre posiciones visuales ayudan a la composición |
 | conditioned | adaptador convolucional + embedding de tarea | la misma imagen puede mapearse a modos de salida distintos cuando el contexto de tarea es explícito |
 | dual-route | adaptador convolucional + decodificador por tarea | letras y palabras se benefician de rutas de salida separadas |
 

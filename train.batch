@@ -13,24 +13,29 @@ conda activate cowaver
 cd ~/cowaver
 
 # Architectures:
-#   convolutional, recurrent, transformer, conditioned, dual-route
+#   unconditioned, conditioned, dual-route
 #
 # Decoders:
+#   convolutional, recurrent, transformer
+#
+# Adapters:
 #   convolutional, recurrent, transformer
 #
 # Proportions:
 #   letters, phonetized words, words
 #
 # Example:
-#   sbatch --job-name=MY_JOB_NAME --mail-user=MY_EMAIL train.batch dual-route convolutional
+#   sbatch --job-name=MY_JOB_NAME --mail-user=MY_EMAIL train.batch dual-route convolutional transformer
 
 ARCHITECTURE=${1:?Missing architecture}
 DECODER=${2:?Missing decoder}
+ADAPTER=${3:-convolutional}
 
 python train.py \
-  -d /scratch/$USER/$ARCHITECTURE/$DECODER/ \
-  -c checkpoints/$ARCHITECTURE/$DECODER/ \
+  -d /scratch/$USER/$ARCHITECTURE/$ADAPTER/$DECODER/ \
+  -c checkpoints/$ARCHITECTURE/$ADAPTER/$DECODER/ \
   --architecture $ARCHITECTURE \
+  --adapter $ADAPTER \
   --decoder $DECODER \
   --phase1-proportions 1 0 0 \
   --phase2-proportions 0.25 0.75 0 \
