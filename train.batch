@@ -28,8 +28,8 @@ ARCHITECTURE=${1:?Missing architecture}
 DECODER=${2:?Missing decoder}
 
 python train.py \
-  -d /scratch/$USER/C/$ARCHITECTURE/$DECODER/ \
-  -c checkpoints/C/$ARCHITECTURE/$DECODER/ \
+  -d /scratch/$USER/$ARCHITECTURE/$DECODER/ \
+  -c checkpoints/$ARCHITECTURE/$DECODER/ \
   --architecture $ARCHITECTURE \
   --decoder $DECODER \
   --phase1-proportions 1 0 0 \
