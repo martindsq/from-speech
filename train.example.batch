@@ -18,7 +18,7 @@ cd ~/cowaver
 #   convolutional, recurrent, transformer, conditioned, dual-route
 #
 # Decoders:
-#   convolutional, recurrent, transformer, upsampling
+#   convolutional, recurrent, transformer
 #
 # Training schemes:
 #   B: mswc -> mswc -> mswc

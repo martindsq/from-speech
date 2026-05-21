@@ -14,7 +14,6 @@ from .decoders import (
     HorizontalFeaturesToMel,
     RecurrentMelDecoder,
     TransformerMelDecoder,
-    UpsamplingMelDecoder,
     build_decoder,
 )
 from .transformer import CoWaverTransformer
@@ -59,7 +58,6 @@ __all__ = [
     "ResidualTemporalBlock",
     "TemporalAdapter",
     "TransformerMelDecoder",
-    "UpsamplingMelDecoder",
     "build_decoder",
     "build_model",
     "unpack_batch",

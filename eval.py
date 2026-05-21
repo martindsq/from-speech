@@ -57,7 +57,7 @@ def load_cowaver(cowaver: CoWaver):
         base_dir=tiny_letter_path,
         mel_bins=cowaver.mel_bins,
         position=RandomPosition(mean=0.5, std=0.1),
-        task_id=0
+        task_id=1
     )
     phones = TinyMel(
         base_dir=tiny_phones_path,

@@ -97,46 +97,10 @@ class TransformerMelDecoder(nn.Module):
         return self.out_proj(x).transpose(1, 2)
 
 
-class UpsamplingMelDecoder(nn.Module):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, mel_bins: int = 40, seq_len: int = 49):
-        super().__init__()
-        self.seq_len = seq_len
-        self.in_proj = nn.Conv1d(latent_dim, hidden_size, kernel_size=1)
-        self.up_proj = nn.ConvTranspose1d(
-            hidden_size,
-            hidden_size,
-            kernel_size=4,
-            stride=2,
-            padding=1,
-        )
-        self.blocks = nn.Sequential(
-            ResidualTemporalBlock(hidden_size, kernel_size=5, dilation=1),
-            ResidualTemporalBlock(hidden_size, kernel_size=5, dilation=2),
-            ResidualTemporalBlock(hidden_size, kernel_size=3, dilation=1),
-        )
-        self.out_proj = nn.Conv1d(hidden_size, mel_bins, kernel_size=1)
-
-    def forward(self, z: Tensor):
-        if z.dim() == 2:
-            z = z.unsqueeze(0)
-        x = self.in_proj(z.transpose(1, 2))
-        x = self.up_proj(x)
-        if x.size(-1) != self.seq_len:
-            x = F.interpolate(
-                x,
-                size=self.seq_len,
-                mode="linear",
-                align_corners=False
-            )
-        x = self.blocks(x)
-        return self.out_proj(x)
-
-
 DECODER_REGISTRY = {
     "convolutional": ConvolutionalMelDecoder,
     "recurrent": RecurrentMelDecoder,
     "transformer": TransformerMelDecoder,
-    "upsampling": UpsamplingMelDecoder,
 }
 
 

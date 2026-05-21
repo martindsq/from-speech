@@ -11,7 +11,7 @@ from ..models import DataModule, TestResults, TrainableModule
 
 
 class CoWaverConditioned(TrainableModule):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, num_tasks: int = 3, decoder: str = "convolutional"):
+    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, num_tasks: int = 2, decoder: str = "convolutional"):
         decoder_suffix = "" if decoder == "convolutional" else f"_dc{decoder.replace('-', '_')}"
         super().__init__(name=f"cowaver_conditioned_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{decoder_suffix}")
         self.mel_bins = mel_bins
@@ -33,21 +33,19 @@ class CoWaverConditioned(TrainableModule):
             seq_len=seq_len
         )
 
-    @staticmethod
-    def _phase_task_id(phase: int) -> int:
-        return max(0, min(phase - 1, 2))
-
-    def _resolve_task_ids(self, task_ids, batch_size: int, phase: int, device: torch.device) -> Tensor:
+    def _resolve_task_ids(self, task_ids, device: torch.device) -> Tensor:
         if task_ids is None:
-            task_ids = torch.full((batch_size,), self._phase_task_id(phase), dtype=torch.long, device=device)
-        else:
-            task_ids = task_ids.to(device).long().view(-1)
-        return task_ids.clamp(0, self.num_tasks - 1)
+            raise ValueError("CoWaverConditioned requires task_ids from the dataset.")
+        task_ids = task_ids.to(device).long().view(-1)
+        task_indices = task_ids - 1
+        if (task_indices < 0).any() or (task_indices >= self.num_tasks).any():
+            raise ValueError(f"task_ids must be in the range 1..{self.num_tasks}.")
+        return task_indices
 
     def forward(self, x: Tensor, task_ids: Tensor | None = None, phase: int = 3) -> tuple[Tensor, Tensor]:
         h = self.visual_encoder(x)
         z = self.adapter(h)
-        task_ids = self._resolve_task_ids(task_ids, z.size(0), phase, z.device)
+        task_ids = self._resolve_task_ids(task_ids, z.device)
         z = z + self.task_embedding(task_ids).unsqueeze(1)
         mel = self.decoder(z)
         return mel, z
