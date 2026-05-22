@@ -24,19 +24,35 @@ cd ~/cowaver
 # Proportions:
 #   letters, phonetized words, words
 #
+# Model dimensions:
+#   latent_dim, hidden_size, mel_bins, width_steps, height_bands, seq_len
+#
 # Example:
-#   sbatch --job-name=MY_JOB_NAME --mail-user=MY_EMAIL train.batch dual-route convolutional transformer
+#   sbatch --job-name=MY_JOB_NAME --mail-user=MY_EMAIL train.batch dual-route convolutional transformer 256 256 80 24 4 49
 
 ARCHITECTURE=${1:?Missing architecture}
 DECODER=${2:?Missing decoder}
 ADAPTER=${3:-convolutional}
+LATENT_DIM=${4:-256}
+HIDDEN_SIZE=${5:-256}
+MEL_BINS=${6:-80}
+WIDTH_STEPS=${7:-24}
+HEIGHT_BANDS=${8:-4}
+SEQ_LEN=${9:-49}
+RUN_ID=${SLURM_JOB_ID:-$(date +%Y%m%d%H%M%S)}
 
 python train.py \
-  -d /scratch/$USER/$ARCHITECTURE/$ADAPTER/$DECODER/ \
+  -d /scratch/$USER/$RUN_ID \
   -c checkpoints/$ARCHITECTURE/$ADAPTER/$DECODER/ \
   --architecture $ARCHITECTURE \
   --adapter $ADAPTER \
   --decoder $DECODER \
+  --latent-dim $LATENT_DIM \
+  --hidden-size $HIDDEN_SIZE \
+  --mel-bins $MEL_BINS \
+  --width-steps $WIDTH_STEPS \
+  --height-bands $HEIGHT_BANDS \
+  --seq-len $SEQ_LEN \
   --phase1-proportions 1 0 0 \
   --phase2-proportions 0.25 0.75 0 \
   --phase3-proportions 0.10 0.15 0.75
