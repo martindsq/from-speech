@@ -24,3 +24,4 @@ class ResidualTemporalBlock(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return x + self.block(x)
+

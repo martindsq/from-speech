@@ -20,7 +20,8 @@ from .decoders import (
     TransformerMelDecoder,
     build_decoder,
 )
-from .unconditioned import CoWaverUnconditioned, ImageToHorizontalFeatures
+from .encoders import ImageToHorizontalFeatures
+from .unconditioned import CoWaverUnconditioned
 
 CoWaver = CoWaverUnconditioned
 

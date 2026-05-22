@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from torch.optim import Optimizer, AdamW
@@ -7,70 +6,22 @@ from torch.optim.lr_scheduler import LRScheduler, StepLR
 
 from .adapters import build_temporal_adapter
 from .common import unpack_batch
-from .cornet import CORnet_Z
 from .decoders import build_decoder
+from .encoders import ImageToHorizontalFeatures
 from ..models import DataModule, TestResults, TrainableModule
 
 
-class ImageToHorizontalFeatures(nn.Module):
-    def __init__(self, feature_dim: int = 256, width_steps: int = 24, height_bands: int = 4):
-        super().__init__()
-
-        self.feature_dim = feature_dim
-        self.width_steps = width_steps
-        self.height_bands = height_bands
-
-        self.cornet_z = CORnet_Z()
-        self.cornet_z.module.decoder = nn.Identity()
-        self.projector = nn.Conv1d(512 * height_bands, feature_dim, kernel_size=1)
-
-    def forward(self, x):
-        """Makes an inference.
-
-        Parameters
-        ----------
-        x: Tensor
-            Un tensor de forma [B, C, H, W] donde B es el tamaño del batch, C
-            es el número de canales (tipicamente 3), H y W la altura y el ancho
-            de las imágenes respectivamente. Se puede omitir B.
-
-        Returns
-        ------
-        h: Tensor
-            Un tensor de forma [B, width_steps, feature_dim]. B es igual a 1 si se
-            omitió en x.
-        """
-        if x.dim() == 3:
-            x = x.unsqueeze(0)
-        features = self.cornet_z(x)
-        # Preserve coarse vertical structure before turning width into time.
-        features = F.interpolate(
-            features,
-            size=(self.height_bands, features.size(-1)),
-            mode="bilinear",
-            align_corners=False
-        )
-        B, C, H, W = features.shape
-        features = features.reshape(B, C * H, W)
-        features = F.interpolate(
-            features,
-            size=self.width_steps,
-            mode="linear",
-            align_corners=False
-        )
-        features = self.projector(features)
-        return features.transpose(1, 2)
-
-
 class CoWaverUnconditioned(TrainableModule):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, adapter: str = "convolutional", decoder: str = "convolutional", name_prefix: str = "cowaver_unconditioned"):
+    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, height_bands: int = 4, adapter: str = "convolutional", decoder: str = "convolutional", name_prefix: str = "cowaver_unconditioned"):
         adapter_suffix = "" if adapter == "convolutional" else f"_ad{adapter.replace('-', '_')}"
         decoder_suffix = "" if decoder == "convolutional" else f"_dc{decoder.replace('-', '_')}"
-        super().__init__(name=f"{name_prefix}_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{adapter_suffix}{decoder_suffix}")
+        height_suffix = f"_hb{height_bands}"
+        super().__init__(name=f"{name_prefix}_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{height_suffix}{adapter_suffix}{decoder_suffix}")
         self.mel_bins = mel_bins
         self.visual_encoder = ImageToHorizontalFeatures(
             feature_dim=latent_dim,
-            width_steps=width_steps
+            width_steps=width_steps,
+            height_bands=height_bands,
         )
         self.adapter = build_temporal_adapter(
             adapter,

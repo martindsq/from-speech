@@ -108,27 +108,48 @@ Primero crear los scripts locales ignorados por git:
 ```bash
 cp install.example.batch install.batch
 cp eval.example.batch eval.batch
-cp train.example.sh train.sh
 ```
 
-Editar esos archivos y reemplazar `YOUR_EMAIL_HERE` por tu email.
+Configurar el email para las notificaciones de Slurm en el shell. Por ejemplo,
+agregar esto a `~/.bashrc`:
+
+```bash
+export USER_MAIL=tu_email@example.com
+```
+
+Luego recargar la configuracion o abrir una nueva terminal:
+
+```bash
+source ~/.bashrc
+```
 
 Instalar el entorno CUDA:
 
 ```bash
-sbatch install.batch
+sbatch --mail-user="$USER_MAIL" install.batch
 ```
 
-Entrenar una combinacion de arquitectura, decoder y adapter temporal:
+Entrenar las corridas definidas en `train.sh`:
 
 ```bash
-./train.sh dual-route convolutional transformer
+./train.sh
 ```
 
-Si se omite el adapter, usa `convolutional`.
+`train.sh` lee `USER_MAIL` y envia varios jobs con distintas combinaciones de
+`width_steps` y `height_bands`. Cada job llama a `train.batch`, que recibe los
+parametros del modelo en este orden:
 
-`train.sh` envia `train.batch` con un nombre de job basado en la arquitectura,
-el adapter y el decoder. `train.batch` guarda checkpoints en:
+```text
+architecture decoder adapter latent_dim hidden_size mel_bins width_steps height_bands seq_len
+```
+
+`train.batch` usa una carpeta temporal unica en scratch para cada job:
+
+```text
+/scratch/$USER/$SLURM_JOB_ID
+```
+
+Los checkpoints se guardan en:
 
 ```text
 checkpoints/<architecture>/<adapter>/<decoder>/
@@ -137,7 +158,7 @@ checkpoints/<architecture>/<adapter>/<decoder>/
 Evaluar checkpoints en Slurm:
 
 ```bash
-sbatch eval.batch dual-route convolutional transformer
+sbatch --mail-user="$USER_MAIL" eval.batch dual-route convolutional transformer
 ```
 
 ## Checkpoints y salidas

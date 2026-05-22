@@ -30,6 +30,12 @@ parser.add_argument(
     choices=sorted(TEMPORAL_ADAPTER_REGISTRY),
     default="convolutional",
 )
+parser.add_argument("--latent-dim", type=int, default=256)
+parser.add_argument("--hidden-size", type=int, default=256)
+parser.add_argument("--mel-bins", type=int, default=80)
+parser.add_argument("--width-steps", type=int, default=24)
+parser.add_argument("--height-bands", type=int, default=4)
+parser.add_argument("--seq-len", type=int, default=49)
 args = parser.parse_args()
 data_path = Path(args.data)
 checkpoints_path = Path(args.checkpoints)
@@ -40,6 +46,12 @@ print("--checkpoints", checkpoints_path)
 print("--architecture", args.architecture)
 print("--adapter", args.adapter)
 print("--decoder", args.decoder)
+print("--latent-dim", args.latent_dim)
+print("--hidden-size", args.hidden_size)
+print("--mel-bins", args.mel_bins)
+print("--width-steps", args.width_steps)
+print("--height-bands", args.height_bands)
+print("--seq-len", args.seq_len)
 
 tiny_letter_xz_path = Path("tiny-letter-30.tar.xz")
 tiny_phones_xz_path = Path("tiny-phones-200.tar.xz")
@@ -82,10 +94,12 @@ def load_cowaver(cowaver: CoWaver):
         eval_cowaver(cowaver, letters, phones, words)
 
 model_kwargs = {
-    "latent_dim": 256,
-    "hidden_size": 256,
-    "mel_bins": 80,
-    "width_steps": 24,
+    "latent_dim": args.latent_dim,
+    "hidden_size": args.hidden_size,
+    "mel_bins": args.mel_bins,
+    "width_steps": args.width_steps,
+    "height_bands": args.height_bands,
+    "seq_len": args.seq_len,
     "decoder": args.decoder,
 }
 if args.adapter is not None:
