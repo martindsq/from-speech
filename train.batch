@@ -8,7 +8,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --mail-type=ALL
 
-source /clusteruy/home/$USER/miniconda3/bin/activate
+source /clusteruy/home/$USER/miniconda3/etc/profile.d/conda.sh
 conda activate cowaver
 cd ~/cowaver
 
@@ -28,7 +28,7 @@ cd ~/cowaver
 #   latent_dim, hidden_size, mel_bins, width_steps, height_bands, seq_len
 #
 # Example:
-#   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49
+#   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49 8 50
 
 ARCHITECTURE=${1:?Missing architecture}
 DECODER=${2:?Missing decoder}
@@ -39,6 +39,8 @@ MEL_BINS=${6:-80}
 WIDTH_STEPS=${7:-24}
 HEIGHT_BANDS=${8:-4}
 SEQ_LEN=${9:-49}
+MAX_EPOCHS=${10:-30}
+MAX_CLASSES=${11:-200}
 RUN_ID=${SLURM_JOB_ID:-$(date +%Y%m%d%H%M%S)}
 
 python train.py \
@@ -55,4 +57,6 @@ python train.py \
   --seq-len $SEQ_LEN \
   --phase1-proportions 1 0 0 \
   --phase2-proportions 0.25 0.75 0 \
-  --phase3-proportions 0.10 0.15 0.75
+  --phase3-proportions 0.10 0.15 0.75 \
+  --max-epochs "$MAX_EPOCHS" \
+  --max-classes "$MAX_CLASSES"

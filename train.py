@@ -41,6 +41,8 @@ parser.add_argument("--mel-bins", type=int, default=80)
 parser.add_argument("--width-steps", type=int, default=24)
 parser.add_argument("--height-bands", type=int, default=4)
 parser.add_argument("--seq-len", type=int, default=49)
+parser.add_argument("--max-epochs", type=int, default=30)
+parser.add_argument("--max-classes", type=int, default=200)
 parser.add_argument(
     "--phase1-proportions",
     nargs=3,
@@ -63,6 +65,10 @@ parser.add_argument(
     metavar=("LETTERS", "PHONES", "WORDS"),
 )
 args = parser.parse_args()
+if args.max_epochs <= 0:
+    parser.error("--max-epochs must be positive")
+if args.max_classes <= 0:
+    parser.error("--max-classes must be positive")
 data_path = Path(args.data)
 checkpoints_path = Path(args.checkpoints)
 data_path.mkdir(parents=True, exist_ok=True)
@@ -78,6 +84,8 @@ print("--mel-bins", args.mel_bins)
 print("--width-steps", args.width_steps)
 print("--height-bands", args.height_bands)
 print("--seq-len", args.seq_len)
+print("--max-epochs", args.max_epochs)
+print("--max-classes", args.max_classes)
 print("--phase1-proportions", args.phase1_proportions)
 print("--phase2-proportions", args.phase2_proportions)
 print("--phase3-proportions", args.phase3_proportions)
@@ -130,18 +138,20 @@ def train_cowaver(cowaver: CoWaver):
         base_dir=tiny_phones_path,
         mel_bins=cowaver.mel_bins,
         position=RandomPosition(mean=0.5, std=0.1),
-        task_id=1
+        task_id=1,
+        max_classes=args.max_classes,
     )
     words = TinyMel(
         base_dir=tiny_mswc_path,
         mel_bins=cowaver.mel_bins,
         position=RandomPosition(mean=0.5, std=0.1),
-        task_id=2
+        task_id=2,
+        max_classes=args.max_classes,
     )
     entrenar_red(
-	net=cowaver,
+        net=cowaver,
         data=make_phase_data(letters, phones, words, args.phase1_proportions),
-        num_epochs=30,
+        num_epochs=args.max_epochs,
         phase=1,
         dispositivo=dispositivo,
         checkpoints_folder=checkpoints_path
@@ -150,7 +160,7 @@ def train_cowaver(cowaver: CoWaver):
     entrenar_red(
         net=cowaver,
         data=make_phase_data(letters, phones, words, args.phase2_proportions),
-        num_epochs=30,
+        num_epochs=args.max_epochs,
         phase=2,
         dispositivo=dispositivo,
         checkpoints_folder=checkpoints_path
@@ -159,7 +169,7 @@ def train_cowaver(cowaver: CoWaver):
     entrenar_red(
         net=cowaver,
         data=make_phase_data(letters, phones, words, args.phase3_proportions),
-        num_epochs=30,
+        num_epochs=args.max_epochs,
         phase=3,
         dispositivo=dispositivo,
         checkpoints_folder=checkpoints_path

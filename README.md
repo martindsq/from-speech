@@ -85,6 +85,19 @@ python train.py \
   --phase3-proportions 0.10 0.15 0.75
 ```
 
+Para comparaciones rapidas se puede acortar el entrenamiento y reducir la
+cantidad de clases usadas en `tiny-phones-200` y `tiny-mswc-200`:
+
+```bash
+python train.py \
+  --max-epochs 8 \
+  --max-classes 50
+```
+
+`--max-classes` no afecta `tiny-letter-30`; solo recorta los datasets de
+palabras a las primeras clases ordenadas alfabeticamente. Por defecto vale
+`200`.
+
 ## Evaluacion local
 
 `eval.py` carga los checkpoints disponibles para cada fase y evalua el modelo
@@ -136,23 +149,31 @@ Entrenar las corridas definidas en `train.sh`:
 ./train.sh
 ```
 
-`train.sh` requiere `USER_MAIL` y envia cinco jobs exploratorios con distintas
-combinaciones de `width_steps` y `height_bands`:
+`train.sh` es una lista explicita de llamados `sbatch`. Deja activo el barrido
+rapido recomendado:
 
 ```text
+ws12-hb1
+ws16-hb1
+ws20-hb1
 ws24-hb1
-ws24-hb8
-ws12-hb4
-ws7-hb1
-ws7-hb8
+ws28-hb1
 ```
+
+Todos usan `max_epochs=8` y `max_classes=50`. Mas abajo en el mismo archivo quedan
+comentados algunos controles `hb4` y finalistas completos para descomentar
+cuando haga falta.
+
+`train.sh` requiere `USER_MAIL`.
 
 Cada job llama a `train.batch`, que recibe los parametros del modelo en este
 orden:
 
 ```text
-architecture decoder adapter latent_dim hidden_size mel_bins width_steps height_bands seq_len
+architecture decoder adapter latent_dim hidden_size mel_bins width_steps height_bands seq_len max_epochs max_classes
 ```
+
+`max_epochs` y `max_classes` son opcionales y por defecto valen `30` y `200`.
 
 `train.batch` usa una carpeta temporal unica en scratch para cada job:
 
