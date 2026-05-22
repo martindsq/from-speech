@@ -28,7 +28,7 @@ cd ~/cowaver
 #   latent_dim, hidden_size, mel_bins, width_steps, height_bands, seq_len
 #
 # Example:
-#   sbatch --job-name=MY_JOB_NAME --mail-user=MY_EMAIL train.batch dual-route convolutional transformer 256 256 80 24 4 49
+#   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49
 
 ARCHITECTURE=${1:?Missing architecture}
 DECODER=${2:?Missing decoder}

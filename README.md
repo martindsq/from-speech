@@ -101,9 +101,10 @@ python eval.py \
 
 ## Uso en ClusterUY/Slurm
 
-El repo incluye plantillas para instalar, entrenar y evaluar con `sbatch`.
+El repo incluye plantillas para instalar y evaluar con `sbatch`, y un
+`train.sh` para enviar las corridas de entrenamiento.
 
-Primero crear los scripts locales ignorados por git:
+Primero crear los scripts locales de instalacion y evaluacion:
 
 ```bash
 cp install.example.batch install.batch
@@ -135,9 +136,19 @@ Entrenar las corridas definidas en `train.sh`:
 ./train.sh
 ```
 
-`train.sh` lee `USER_MAIL` y envia varios jobs con distintas combinaciones de
-`width_steps` y `height_bands`. Cada job llama a `train.batch`, que recibe los
-parametros del modelo en este orden:
+`train.sh` requiere `USER_MAIL` y envia cinco jobs exploratorios con distintas
+combinaciones de `width_steps` y `height_bands`:
+
+```text
+ws24-hb1
+ws24-hb8
+ws12-hb4
+ws7-hb1
+ws7-hb8
+```
+
+Cada job llama a `train.batch`, que recibe los parametros del modelo en este
+orden:
 
 ```text
 architecture decoder adapter latent_dim hidden_size mel_bins width_steps height_bands seq_len
