@@ -36,19 +36,21 @@ class ImageToHorizontalFeatures(nn.Module):
             x = x.unsqueeze(0)
         features = self.cornet_z(x)
         # Preserve coarse vertical structure before turning width into time.
-        features = F.interpolate(
-            features,
-            size=(self.height_bands, features.size(-1)),
-            mode="bilinear",
-            align_corners=False,
-        )
+        if features.size(-2) != self.height_bands:
+            features = F.interpolate(
+                features,
+                size=(self.height_bands, features.size(-1)),
+                mode="bilinear",
+                align_corners=False,
+            )
         B, C, H, W = features.shape
         features = features.reshape(B, C * H, W)
-        features = F.interpolate(
-            features,
-            size=self.width_steps,
-            mode="linear",
-            align_corners=False,
-        )
+        if features.size(-1) != self.width_steps:
+            features = F.interpolate(
+                features,
+                size=self.width_steps,
+                mode="linear",
+                align_corners=False,
+            )
         features = self.projector(features)
         return features.transpose(1, 2)
