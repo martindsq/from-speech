@@ -43,6 +43,9 @@ parser.add_argument("--height-bands", type=int, default=4)
 parser.add_argument("--seq-len", type=int, default=49)
 parser.add_argument("--max-epochs", type=int, default=30)
 parser.add_argument("--max-classes", type=int, default=200)
+parser.add_argument("--phase1-max-word-length", type=int, default=0)
+parser.add_argument("--phase2-max-word-length", type=int, default=0)
+parser.add_argument("--phase3-max-word-length", type=int, default=0)
 parser.add_argument(
     "--phase1-proportions",
     nargs=3,
@@ -69,6 +72,12 @@ if args.max_epochs <= 0:
     parser.error("--max-epochs must be positive")
 if args.max_classes <= 0:
     parser.error("--max-classes must be positive")
+if args.phase1_max_word_length < 0:
+    parser.error("--phase1-max-word-length must be non-negative")
+if args.phase2_max_word_length < 0:
+    parser.error("--phase2-max-word-length must be non-negative")
+if args.phase3_max_word_length < 0:
+    parser.error("--phase3-max-word-length must be non-negative")
 data_path = Path(args.data)
 checkpoints_path = Path(args.checkpoints)
 data_path.mkdir(parents=True, exist_ok=True)
@@ -86,6 +95,9 @@ print("--height-bands", args.height_bands)
 print("--seq-len", args.seq_len)
 print("--max-epochs", args.max_epochs)
 print("--max-classes", args.max_classes)
+print("--phase1-max-word-length", args.phase1_max_word_length)
+print("--phase2-max-word-length", args.phase2_max_word_length)
+print("--phase3-max-word-length", args.phase3_max_word_length)
 print("--phase1-proportions", args.phase1_proportions)
 print("--phase2-proportions", args.phase2_proportions)
 print("--phase3-proportions", args.phase3_proportions)
@@ -127,6 +139,56 @@ def make_phase_data(letters: TinyMel, phones: TinyMel, words: TinyMel, proportio
         names=[name for _, _, name in active],
     )
 
+def optional_word_length(max_word_length: int) -> int | None:
+    if max_word_length == 0:
+        return None
+    return max_word_length
+
+def make_word_data(base_dir: Path, mel_bins: int, task_id: int, max_word_length: int | None = None):
+    return TinyMel(
+        base_dir=base_dir,
+        mel_bins=mel_bins,
+        position=RandomPosition(mean=0.5, std=0.1),
+        task_id=task_id,
+        max_classes=args.max_classes,
+        max_word_length=max_word_length,
+    )
+
+def train_phase(
+    cowaver: CoWaver,
+    phase: int,
+    proportions: list[float],
+    max_word_length: int,
+    eval_letters: TinyMel,
+    eval_phones: TinyMel,
+    eval_words: TinyMel,
+):
+    phase_phones = eval_phones
+    phase_words = eval_words
+    if proportions[1] > 0:
+        phase_phones = make_word_data(
+            tiny_phones_path,
+            cowaver.mel_bins,
+            task_id=1,
+            max_word_length=optional_word_length(max_word_length),
+        )
+    if proportions[2] > 0:
+        phase_words = make_word_data(
+            tiny_mswc_path,
+            cowaver.mel_bins,
+            task_id=2,
+            max_word_length=optional_word_length(max_word_length),
+        )
+    entrenar_red(
+        net=cowaver,
+        data=make_phase_data(eval_letters, phase_phones, phase_words, proportions),
+        num_epochs=args.max_epochs,
+        phase=phase,
+        dispositivo=dispositivo,
+        checkpoints_folder=checkpoints_path
+    )
+    eval_cowaver(cowaver, eval_letters, eval_phones, eval_words)
+
 def train_cowaver(cowaver: CoWaver): 
     letters = TinyMel(
         base_dir=tiny_letter_path,
@@ -148,33 +210,9 @@ def train_cowaver(cowaver: CoWaver):
         task_id=2,
         max_classes=args.max_classes,
     )
-    entrenar_red(
-        net=cowaver,
-        data=make_phase_data(letters, phones, words, args.phase1_proportions),
-        num_epochs=args.max_epochs,
-        phase=1,
-        dispositivo=dispositivo,
-        checkpoints_folder=checkpoints_path
-    )
-    eval_cowaver(cowaver, letters, phones, words)
-    entrenar_red(
-        net=cowaver,
-        data=make_phase_data(letters, phones, words, args.phase2_proportions),
-        num_epochs=args.max_epochs,
-        phase=2,
-        dispositivo=dispositivo,
-        checkpoints_folder=checkpoints_path
-    )
-    eval_cowaver(cowaver, letters, phones, words)
-    entrenar_red(
-        net=cowaver,
-        data=make_phase_data(letters, phones, words, args.phase3_proportions),
-        num_epochs=args.max_epochs,
-        phase=3,
-        dispositivo=dispositivo,
-        checkpoints_folder=checkpoints_path
-    )
-    eval_cowaver(cowaver, letters, phones, words)
+    train_phase(cowaver, 1, args.phase1_proportions, args.phase1_max_word_length, letters, phones, words)
+    train_phase(cowaver, 2, args.phase2_proportions, args.phase2_max_word_length, letters, phones, words)
+    train_phase(cowaver, 3, args.phase3_proportions, args.phase3_max_word_length, letters, phones, words)
 
 model_kwargs = {
     "latent_dim": args.latent_dim,
