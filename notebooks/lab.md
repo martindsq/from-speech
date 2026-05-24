@@ -37,6 +37,38 @@ Finalmente, el decodificador mapea la secuencia temporal latente a un espectrogr
 
 El entrenamiento está organizado como *curriculum learning*. En el curriculum principal, la fase 1 entrena con letras, la fase 2 mezcla letras y palabras fonetizadas, y la fase 3 mezcla letras, palabras fonetizadas y palabras de MSWC. Para las arquitecturas no condicionadas, phones y MSWC son targets incompatibles para el mismo estímulo visual, así que es esperable que la red olvide palabras fonetizadas en la fase 3. En los modelos conditioned y dual-route, `task_id` desambigua el modo de salida esperado: las letras y las palabras fonetizadas usan la tarea 1, y las palabras de MSWC usan la tarea 2.
 
+## Configuracion del encoder
+
+El encoder visual convierte la salida espacial de CORnet-Z en una secuencia horizontal. Las imágenes de entrada tienen tamaño `224x224`, pero la pila convolucional de CORnet-Z reduce la resolución espacial hasta mapas de `7x7`. Una configuración como `width_steps=7` y `height_bands=7` usa casi directamente la grilla nativa del extractor visual, mientras que otras configuraciones interpolan esa grilla para obtener más o menos pasos horizontales y bandas verticales.
+
+Las configuraciones con más estructura vertical, por ej. `height_bands=4`, mejora consistentemente frente a `height_bands=1` en los anchos comparables:
+
+| Configuracion | avg@1 | avg@3 | avg@5 |
+| :------------ | :---: | :---: | :---: |
+| `ws12-hb1`    | 13.53 | 31.83 | 44.95 |
+| `ws12-hb4`    | 15.27 | 32.24 | 46.02 |
+| `ws20-hb1`    | 14.60 | 33.05 | 42.28 |
+| `ws20-hb4`    | 15.53 | 32.24 | 44.69 |
+| `ws24-hb1`    | 10.04 | 27.57 | 39.10 |
+| `ws24-hb4`    | 12.19 | 29.98 | 40.69 |
+
+En la ronda intermedia (`max_epochs=15`, `max_classes=100`) se compararon los mejores candidatos del barrido rápido:
+
+| Configuracion | Fase 3 avg@1 | Fase 3 avg@3 | Fase 3 avg@5 |
+| :-- | --: | --: | --: |
+| `ws7-hb7` | 18.75 | 31.13 | 41.43 |
+| `ws20-hb4` | 18.01 | 33.95 | 47.47 |
+| `ws12-hb4` | 17.34 | 32.87 | 43.10 |
+
+Luego se ajustó `ImageToHorizontalFeatures` para evitar interpolaciones cuando la salida de CORnet-Z ya coincide con la configuración pedida. En particular, para `ws7-hb7` esto evita reescalar una grilla que ya es nativamente cercana a `7x7`. Al repetir `ws7-hb7` con `max_epochs=15` y `max_classes=100`, la métrica cambió poco en avg@1 y mejoró en top-k:
+
+| Configuracion | Fase 3 avg@1 | Fase 3 avg@3 | Fase 3 avg@5 |
+| :-- | --: | --: | --: |
+| `ws7-hb7` antes | 18.75 | 31.13 | 41.43 |
+| `ws7-hb7` después | 18.01 | 35.28 | 43.51 |
+
+La interpretación actual es que preservar algo de estructura vertical ayuda, y que el encoder no debería forzar interpolaciones innecesarias. Los candidatos principales son entonces `ws7-hb7` y `ws20-hb4`: el primero explota la grilla nativa del encoder y el segundo parece más robusto en métricas top-k.
+
 ## Configuración del modelo convolucional
 
 La fase 1 entrena con letras renderizadas aisladas emparejadas con sus representaciones de audio, usando posición aleatoria del texto pero sin aumentación de escena acústica.

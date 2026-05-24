@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --ntasks=1
 #SBATCH --mem=2048
-#SBATCH --time=2:00:00
+#SBATCH --time=1:00:00
 #SBATCH --partition=normal
 #SBATCH --qos=gpu
 #SBATCH --output=%x.out
@@ -29,6 +29,8 @@ cd ~/cowaver
 #
 # Example:
 #   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49 8 50
+#   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49 8 50 1 0 0 0.5 0.5 0 0.1 0.5 0.4
+#   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49 8 50 1 0 0 0.5 0.5 0 0.1 0.5 0.4 reading-bridge
 
 ARCHITECTURE=${1:?Missing architecture}
 DECODER=${2:?Missing decoder}
@@ -41,11 +43,25 @@ HEIGHT_BANDS=${8:-4}
 SEQ_LEN=${9:-49}
 MAX_EPOCHS=${10:-30}
 MAX_CLASSES=${11:-200}
+PHASE1_LETTERS=${12:-1}
+PHASE1_PHONES=${13:-0}
+PHASE1_WORDS=${14:-0}
+PHASE2_LETTERS=${15:-0.25}
+PHASE2_PHONES=${16:-0.75}
+PHASE2_WORDS=${17:-0}
+PHASE3_LETTERS=${18:-0.10}
+PHASE3_PHONES=${19:-0.15}
+PHASE3_WORDS=${20:-0.75}
+RUN_LABEL=${21:-}
 RUN_ID=${SLURM_JOB_ID:-$(date +%Y%m%d%H%M%S)}
+CHECKPOINTS_PATH=checkpoints/$ARCHITECTURE/$ADAPTER/$DECODER/
+if [ -n "$RUN_LABEL" ]; then
+  CHECKPOINTS_PATH=checkpoints/$ARCHITECTURE/$ADAPTER/$DECODER/$RUN_LABEL/
+fi
 
 python train.py \
   -d /scratch/$USER/$RUN_ID \
-  -c checkpoints/$ARCHITECTURE/$ADAPTER/$DECODER/ \
+  -c "$CHECKPOINTS_PATH" \
   --architecture $ARCHITECTURE \
   --adapter $ADAPTER \
   --decoder $DECODER \
@@ -55,8 +71,8 @@ python train.py \
   --width-steps $WIDTH_STEPS \
   --height-bands $HEIGHT_BANDS \
   --seq-len $SEQ_LEN \
-  --phase1-proportions 1 0 0 \
-  --phase2-proportions 0.25 0.75 0 \
-  --phase3-proportions 0.10 0.15 0.75 \
+  --phase1-proportions "$PHASE1_LETTERS" "$PHASE1_PHONES" "$PHASE1_WORDS" \
+  --phase2-proportions "$PHASE2_LETTERS" "$PHASE2_PHONES" "$PHASE2_WORDS" \
+  --phase3-proportions "$PHASE3_LETTERS" "$PHASE3_PHONES" "$PHASE3_WORDS" \
   --max-epochs "$MAX_EPOCHS" \
   --max-classes "$MAX_CLASSES"
