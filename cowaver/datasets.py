@@ -5,12 +5,10 @@ from .transforms import RandomPosition, RandomAlign
 from .utils import cargar_audio, extract_mel, make_image
 
 class TinySpeakDataset(Dataset):
-    def __init__(self, base_dir: str, transform: Module | None = None, max_classes: int | None = None, max_word_length: int | None = None):
+    def __init__(self, base_dir: str, transform: Module | None = None, max_classes: int | None = None):
         self.base_dir = base_dir
         if max_classes is not None and max_classes <= 0:
             raise ValueError("max_classes must be positive.")
-        if max_word_length is not None and max_word_length <= 0:
-            raise ValueError("max_word_length must be positive.")
         if transform is None:
             self.transform = RandomAlign()
         else:
@@ -21,10 +19,6 @@ class TinySpeakDataset(Dataset):
         ]
         if max_classes is not None:
             classes = classes[:max_classes]
-        if max_word_length is not None:
-            classes = [word for word in classes if len(word) <= max_word_length]
-        if len(classes) == 0:
-            raise ValueError(f"No classes found in {base_dir} with the requested filters.")
         self.words = classes
         self.class_to_idx = {word: i for i, word in enumerate(self.words)}
         self.samples = []
