@@ -37,6 +37,72 @@ Finalmente, el decodificador mapea la secuencia temporal latente a un espectrogr
 
 El entrenamiento está organizado como *curriculum learning*. En el curriculum principal, la fase 1 entrena con letras, la fase 2 mezcla letras y palabras fonetizadas, y la fase 3 mezcla letras, palabras fonetizadas y palabras de MSWC. Para las arquitecturas no condicionadas, phones y MSWC son targets incompatibles para el mismo estímulo visual, así que es esperable que la red olvide palabras fonetizadas en la fase 3. En los modelos conditioned y dual-route, `task_id` desambigua el modo de salida esperado: las letras y las palabras fonetizadas usan la tarea 1, y las palabras de MSWC usan la tarea 2.
 
+## Curriculums de lectura
+
+Con la configuración `dual-route`, decoder/adaptador convolucional, `ws7-hb7`, `max_epochs=8` y `max_classes=50`, se compararon varios curriculums. Las métricas reportadas son `top1/top3/top5` al final de la fase 3:
+
+| Curriculum | Letras | Phones | MSWC |
+| :-- | :--: | :--: | :--: |
+| `baseline` | 22.58 / 38.71 / 61.29 | 12 / 42 / 54 | 4 / 20 / 24 |
+| `phonics-first` | 19.35 / 41.94 / 58.06 | 18 / 42 / 54 | 4 / 16 / 22 |
+| `decoding-bridge` | 16.13 / 41.94 / 61.29 | 10 / 34 / 48 | 6 / 10 / 20 |
+| `word-heavy` | 16.13 / 45.16 / 51.61 | 10 / 24 / 44 | **12 / 36 / 44** |
+| `word-heavy-soft` | 19.35 / 38.71 / 54.84 | 16 / 40 / 52 | 12 / 28 / 34 |
+| `word-heavy-balanced` | **22.58 / 45.16 / 64.52** | 20 / 46 / 60 | 12 / 26 / 30 |
+| `word-heavy-phonics-retain` | 20.13 / 43.62 / 60.40 | **24 / 56 / 60** | 8 / 20 / 24 |
+
+Los curriculums evaluados fueron:
+
+```text
+baseline
+  p1 = 1.00 letters, 0.00 phones, 0.00 words
+  p2 = 0.25 letters, 0.75 phones, 0.00 words
+  p3 = 0.10 letters, 0.15 phones, 0.75 words
+
+phonics-first
+  p1 = 1.00 letters, 0.00 phones, 0.00 words
+  p2 = 0.50 letters, 0.50 phones, 0.00 words
+  p3 = 0.05 letters, 0.55 phones, 0.40 words
+
+decoding-bridge
+  p1 = 1.00 letters, 0.00 phones, 0.00 words
+  p2 = 0.60 letters, 0.40 phones, 0.00 words
+  p3 = 0.10 letters, 0.50 phones, 0.40 words
+
+word-heavy
+  p1 = 1.00 letters, 0.00 phones, 0.00 words
+  p2 = 0.20 letters, 0.60 phones, 0.20 words
+  p3 = 0.05 letters, 0.10 phones, 0.85 words
+
+word-heavy-soft
+  p1 = 1.00 letters, 0.00 phones, 0.00 words
+  p2 = 0.15 letters, 0.60 phones, 0.25 words
+  p3 = 0.05 letters, 0.15 phones, 0.80 words
+
+word-heavy-balanced
+  p1 = 1.00 letters, 0.00 phones, 0.00 words
+  p2 = 0.20 letters, 0.50 phones, 0.30 words
+  p3 = 0.05 letters, 0.20 phones, 0.75 words
+
+word-heavy-phonics-retain
+  p1 = 1.00 letters, 0.00 phones, 0.00 words
+  p2 = 0.15 letters, 0.70 phones, 0.15 words
+  p3 = 0.05 letters, 0.25 phones, 0.70 words
+```
+
+La primera lectura es que `word-heavy` maximiza MSWC, mientras que `word-heavy-balanced` ofrece el mejor compromiso global en la corrida corta: conserva letras, mejora phones y mantiene el mismo `top1` en MSWC que `word-heavy`, aunque pierde `top3/top5` en palabras. `word-heavy-phonics-retain` confirma el costo de poner demasiado peso en phones: mejora la tarea fonetizada, pero cae en MSWC.
+
+También se probó limitar el largo de palabras en fase 2 (`<=4`) y volver a vocabulario completo en fase 3. Las variantes `phonics-first-len4-full` y `word-heavy-len4-full` no mejoraron las métricas finales: en particular `word-heavy-len4-full` bajó MSWC de `12/36/44` a `10/22/32`. Por ahora, limitar el largo de las palabras no parece una dirección prometedora.
+
+Luego se escaló la comparación principal a `max_epochs=15` y `max_classes=100`, manteniendo `ws7-hb7`:
+
+| Curriculum | Letras | Phones | MSWC |
+| :-- | :--: | :--: | :--: |
+| `word-heavy` | 16.78 / 36.91 / 57.05 | **15 / 37 / 45** | **15 / 25 / 32** |
+| `word-heavy-balanced` | 16.78 / 36.91 / 57.05 | 13 / 27 / 42 | 15 / 22 / 27 |
+
+Con más clases y más epochs, `word-heavy-balanced` pierde la ventaja global observada en la corrida corta. Ambos empatan en letras y en `top1` de MSWC, pero `word-heavy` queda mejor tanto en phones como en `top3/top5` de MSWC. La conclusión actual es usar `word-heavy` como candidato principal para escalar, manteniendo `word-heavy-balanced` como control más equilibrado si el objetivo explícito es preservar una representación fonológica más fuerte.
+
 ## Configuracion del encoder
 
 El encoder visual convierte la salida espacial de CORnet-Z en una secuencia horizontal. Las imágenes de entrada tienen tamaño `224x224`, pero la pila convolucional de CORnet-Z reduce la resolución espacial hasta mapas de `7x7`. Una configuración como `width_steps=7` y `height_bands=7` usa casi directamente la grilla nativa del extractor visual, mientras que otras configuraciones interpolan esa grilla para obtener más o menos pasos horizontales y bandas verticales.

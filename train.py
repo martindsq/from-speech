@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser()
 # Available temporal adapters: convolutional, recurrent, transformer
 # Available decoders: convolutional, recurrent, transformer
 parser.add_argument('--data', '-d', default="data")
-parser.add_argument('--checkpoints', '-c', default="checkpoints")
+parser.add_argument('--checkpoints', '-c', default=None)
 parser.add_argument(
     "--architecture",
     "-a",
@@ -38,13 +38,14 @@ parser.add_argument(
 parser.add_argument("--latent-dim", type=int, default=256)
 parser.add_argument("--hidden-size", type=int, default=256)
 parser.add_argument("--mel-bins", type=int, default=80)
-parser.add_argument("--width-steps", type=int, default=24)
-parser.add_argument("--height-bands", type=int, default=4)
+parser.add_argument("--width-steps", "-ws", type=int, default=24)
+parser.add_argument("--height-bands", "-hb", type=int, default=4)
 parser.add_argument("--seq-len", type=int, default=49)
 parser.add_argument("--max-epochs", type=int, default=30)
 parser.add_argument("--max-classes", type=int, default=200)
 parser.add_argument(
     "--phase1-proportions",
+    "-p1",
     nargs=3,
     type=float,
     default=[1.0, 0.0, 0.0],
@@ -52,6 +53,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--phase2-proportions",
+    "-p2",
     nargs=3,
     type=float,
     default=[0.25, 0.75, 0.0],
@@ -59,6 +61,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--phase3-proportions",
+    "-p3",
     nargs=3,
     type=float,
     default=[0.10, 0.15, 0.75],
@@ -70,7 +73,9 @@ if args.max_epochs <= 0:
 if args.max_classes <= 0:
     parser.error("--max-classes must be positive")
 data_path = Path(args.data)
-checkpoints_path = Path(args.checkpoints)
+checkpoints_path = None
+if args.checkpoints is not None:
+    checkpoints_path = Path(args.checkpoints)
 data_path.mkdir(parents=True, exist_ok=True)
 
 print("--data", data_path)
@@ -184,9 +189,8 @@ model_kwargs = {
     "height_bands": args.height_bands,
     "seq_len": args.seq_len,
     "decoder": args.decoder,
+    "adapter": args.adapter,
 }
-if args.adapter is not None:
-    model_kwargs["adapter"] = args.adapter
 
 train_cowaver(build_model(args.architecture, **model_kwargs))
 

@@ -71,8 +71,8 @@ python train.py \
   --width-steps $WIDTH_STEPS \
   --height-bands $HEIGHT_BANDS \
   --seq-len $SEQ_LEN \
-  --phase1-proportions "$PHASE1_LETTERS" "$PHASE1_PHONES" "$PHASE1_WORDS" \
-  --phase2-proportions "$PHASE2_LETTERS" "$PHASE2_PHONES" "$PHASE2_WORDS" \
-  --phase3-proportions "$PHASE3_LETTERS" "$PHASE3_PHONES" "$PHASE3_WORDS" \
+  -p1 "$PHASE1_LETTERS" "$PHASE1_PHONES" "$PHASE1_WORDS" \
+  -p2 "$PHASE2_LETTERS" "$PHASE2_PHONES" "$PHASE2_WORDS" \
+  -p3 "$PHASE3_LETTERS" "$PHASE3_PHONES" "$PHASE3_WORDS" \
   --max-epochs "$MAX_EPOCHS" \
   --max-classes "$MAX_CLASSES"
