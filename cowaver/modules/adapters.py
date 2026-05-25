@@ -10,8 +10,8 @@ class ConvolutionalTemporalAdapter(nn.Module):
         super().__init__()
         self.in_proj = nn.Conv1d(input_dim, latent_dim, kernel_size=1)
         self.blocks = nn.Sequential(
-            ResidualTemporalBlock(latent_dim, kernel_size=5, dilation=1),
-            ResidualTemporalBlock(latent_dim, kernel_size=5, dilation=2),
+            ResidualTemporalBlock(latent_dim, kernel_size=3, dilation=1),
+            ResidualTemporalBlock(latent_dim, kernel_size=3, dilation=1),
             ResidualTemporalBlock(latent_dim, kernel_size=3, dilation=1),
         )
 

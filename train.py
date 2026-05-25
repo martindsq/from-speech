@@ -1,5 +1,4 @@
 import argparse
-import os
 from pathlib import Path
 from torchvision.transforms import Compose
 from cowaver.datamodules import TinyMel, MixedTinyMel
@@ -10,7 +9,8 @@ from cowaver.utils import (
     encontrar_dispositivo,
     entrenar_red,
     evaluar_red,
-    borrar_carpeta
+    borrar_carpeta,
+    construir_vocabulario_caracteres,
 )
 from cowaver.checkpoints import cargar_checkpoint
 
@@ -76,6 +76,7 @@ if args.max_classes <= 0:
     parser.error("--max-classes must be positive")
 if args.ctc_weight < 0:
     parser.error("--ctc-weight must be non-negative")
+
 data_path = Path(args.data)
 checkpoints_path = None
 if args.checkpoints is not None:
@@ -109,33 +110,13 @@ tiny_phones_path = descomprimir_archivo(tiny_phones_xz_path, data_path)
 tiny_mswc_path = descomprimir_archivo(tiny_mswc_xz_path, data_path)
 dispositivo = encontrar_dispositivo()
 
-def collect_classes(base_dir: Path, max_classes: int | None = None):
-    classes = [
-        d for d in sorted(os.listdir(base_dir))
-        if not d.startswith(".") and os.path.isdir(base_dir / d)
-    ]
-    if max_classes is not None:
-        classes = classes[:max_classes]
-    return classes
-
-def build_char_vocab(paths: list[tuple[Path, int | None]]):
-    chars = set()
-    for path, max_classes in paths:
-        for split in ("train", "test"):
-            for class_name in collect_classes(path / split, max_classes=max_classes):
-                chars.update(class_name)
-    return {char: index + 1 for index, char in enumerate(sorted(chars))}
-
-char_to_idx = None
-ctc_vocab_size = 0
-if args.ctc_weight > 0:
-    char_to_idx = build_char_vocab([
-        (tiny_letter_path, None),
-        (tiny_phones_path, args.max_classes),
-        (tiny_mswc_path, args.max_classes),
-    ])
-    ctc_vocab_size = len(char_to_idx) + 1
-    print("--ctc-vocab-size", ctc_vocab_size)
+char_to_idx = construir_vocabulario_caracteres([
+    (tiny_letter_path, None),
+    (tiny_phones_path, args.max_classes),
+    (tiny_mswc_path, args.max_classes),
+])
+ctc_vocab_size = len(char_to_idx) + 1
+print("--ctc-vocab-size", ctc_vocab_size)
 
 def eval_cowaver(cowaver: CoWaver, letters: TinyMel, phones: TinyMel, words: TinyMel):
     print(f"Evaluando en {tiny_letter_path.stem}", end="... ")

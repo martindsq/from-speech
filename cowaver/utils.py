@@ -19,6 +19,44 @@ from .models import DataModule, TestResults, TrainHistory, TrainableModule
 
 AUDIO_SAMPLE_RATE = 16_000
 FONT_PATH = font_manager.findfont("DejaVu Sans Mono")
+REEMPLAZOS_ACENTOS = str.maketrans({
+    "á": "a",
+    "é": "e",
+    "í": "i",
+    "ó": "o",
+    "ú": "u",
+    "ü": "u",
+    "Á": "a",
+    "É": "e",
+    "Í": "i",
+    "Ó": "o",
+    "Ú": "u",
+    "Ü": "u",
+})
+
+def normalizar_texto(texto: str) -> str:
+    texto = unicodedata.normalize("NFC", texto.lower())
+    return texto.translate(REEMPLAZOS_ACENTOS)
+
+def listar_clases(carpeta: Path, max_classes: int | None = None) -> list[str]:
+    clases = [
+        path.name for path in sorted(carpeta.iterdir())
+        if not path.name.startswith(".") and path.is_dir()
+    ]
+    if max_classes is not None:
+        clases = clases[:max_classes]
+    return clases
+
+def construir_vocabulario_caracteres(datasets: list[tuple[Path, int | None]]) -> dict[str, int]:
+    caracteres = set()
+    for base_dir, max_classes in datasets:
+        for split in ("train", "test"):
+            for clase in listar_clases(base_dir / split, max_classes=max_classes):
+                caracteres.update(normalizar_texto(clase))
+    return {
+        caracter: indice + 1
+        for indice, caracter in enumerate(sorted(caracteres))
+    }
 
 def encontrar_dispositivo(silent: bool = False):
     """Encuentra un dispositivo apropiado para entrenar o evaluar una red.
