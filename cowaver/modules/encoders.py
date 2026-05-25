@@ -54,3 +54,29 @@ class ImageToHorizontalFeatures(nn.Module):
             )
         features = self.projector(features)
         return features.transpose(1, 2)
+
+
+class ImageToPooledHorizontalFeatures(nn.Module):
+    def __init__(self, feature_dim: int = 256):
+        super().__init__()
+
+        self.feature_dim = feature_dim
+        self.cornet_z = CORnet_Z()
+        self.cornet_z.module.decoder = nn.Identity()
+        self.vertical_pool = nn.AdaptiveAvgPool2d((1, 7))
+        self.projector = nn.Conv1d(512, feature_dim, kernel_size=1)
+
+    def forward(self, x):
+        """Pool the native CORnet IT map vertically into a horizontal sequence.
+
+        Returns
+        -------
+        h: Tensor
+            Tensor de forma [B, 7, feature_dim].
+        """
+        if x.dim() == 3:
+            x = x.unsqueeze(0)
+        features = self.cornet_z(x)
+        features = self.vertical_pool(features).squeeze(2)
+        features = self.projector(features)
+        return features.transpose(1, 2)

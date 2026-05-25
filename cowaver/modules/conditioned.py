@@ -70,6 +70,8 @@ class CoWaverConditioned(TrainableModule):
         z = z + self.task_embedding(task_ids).unsqueeze(1)
         y_hat = self.decoder(z)
         mel_loss = F.l1_loss(y_hat, y)
+        if self.ctc_weight == 0:
+            return mel_loss
         ctc_loss = self.ctc_head.training_loss(h, ctc_targets, ctc_lengths)
         return mel_loss + self.ctc_weight * ctc_loss
 

@@ -20,7 +20,7 @@ from .decoders import (
     TransformerMelDecoder,
     build_decoder,
 )
-from .encoders import ImageToHorizontalFeatures
+from .encoders import ImageToHorizontalFeatures, ImageToPooledHorizontalFeatures
 from .unconditioned import CoWaverUnconditioned
 
 CoWaver = CoWaverUnconditioned
@@ -56,6 +56,7 @@ __all__ = [
     "HorizontalFeaturesToMel",
     "Identity",
     "ImageToHorizontalFeatures",
+    "ImageToPooledHorizontalFeatures",
     "MODEL_REGISTRY",
     "RecurrentMelDecoder",
     "RecurrentAdapter",

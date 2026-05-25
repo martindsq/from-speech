@@ -73,6 +73,8 @@ class CoWaverDualRoute(TrainableModule):
         batch_indices = torch.arange(z.size(0), device=z.device)
         y_hat = outputs[batch_indices, task_ids]
         mel_loss = F.l1_loss(y_hat, y)
+        if self.ctc_weight == 0:
+            return mel_loss
         ctc_loss = self.ctc_head.training_loss(h, ctc_targets, ctc_lengths)
         return mel_loss + self.ctc_weight * ctc_loss
 
