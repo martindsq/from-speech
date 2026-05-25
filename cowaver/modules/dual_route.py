@@ -19,10 +19,8 @@ class CoWaverDualRoute(TrainableModule):
         super().__init__(name=f"cowaver_dual_route_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{height_suffix}{adapter_suffix}{decoder_suffix}{ctc_suffix}")
         self.mel_bins = mel_bins
         self.num_tasks = num_tasks
-        self.visual_encoder = ImageToHorizontalFeatures(
-            feature_dim=latent_dim,
-            width_steps=width_steps,
-            height_bands=height_bands,
+        self.visual_encoder = ImageToPooledHorizontalFeatures(
+            feature_dim=latent_dim
         )
         self.adapter = build_temporal_adapter(
             adapter,
