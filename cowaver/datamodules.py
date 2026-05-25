@@ -1,6 +1,6 @@
 import torch
 from torch.nn import Module
-from torch.utils.data import ConcatDataset, DataLoader, WeightedRandomSampler
+from torch.utils.data import ConcatDataset, DataLoader, WeightedRandomSampler, default_collate
 from .models import DataModule
 from .datasets import ImageMelDataset, RelabeledDataset, TinySpeakDataset
 from .transforms import RandomPosition
@@ -19,9 +19,10 @@ class TinyMel(DataModule):
         Position of stimuli in image used only for the training split. Defaults
         to None (centered).
     """
-    def __init__(self, base_dir: str, mel_bins: int = 40, transform: Module | None = None, position: RandomPosition | None = None, task_id: int | None = None, max_classes: int | None = None):
+    def __init__(self, base_dir: str, mel_bins: int = 40, transform: Module | None = None, position: RandomPosition | None = None, task_id: int | None = None, max_classes: int | None = None, char_to_idx: dict[str, int] | None = None):
         batch_size = 32
         self.task_id = task_id
+        self.char_to_idx = char_to_idx
         train_full_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
                 base_dir / "train",
@@ -30,7 +31,8 @@ class TinyMel(DataModule):
             ),
             position=position,
             mel_bins=mel_bins,
-            task_id=task_id
+            task_id=task_id,
+            char_to_idx=char_to_idx,
         )
         val_full_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
@@ -38,7 +40,8 @@ class TinyMel(DataModule):
                 max_classes=max_classes,
             ),
             mel_bins=mel_bins,
-            task_id=task_id
+            task_id=task_id,
+            char_to_idx=char_to_idx,
         )
         test_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
@@ -46,7 +49,8 @@ class TinyMel(DataModule):
                 max_classes=max_classes,
             ),
             mel_bins=mel_bins,
-            task_id=task_id
+            task_id=task_id,
+            char_to_idx=char_to_idx,
         )
 
         generator = torch.Generator().manual_seed(42)
@@ -94,6 +98,18 @@ class TinyMel(DataModule):
 
     def labels_from_batch(self, batch):
         return batch[1]
+
+    def collate_fn(self, batch):
+        if len(batch[0]) in (3, 4) and torch.is_tensor(batch[0][-1]):
+            prefix = [item[:-1] for item in batch]
+            ctc_targets = [item[-1] for item in batch]
+            collated = default_collate(prefix)
+            target_lengths = torch.tensor(
+                [target.numel() for target in ctc_targets],
+                dtype=torch.long,
+            )
+            return (*collated, torch.cat(ctc_targets), target_lengths)
+        return super().collate_fn(batch)
 
     def mel_prototypes(self, dispositivo=None):
         if self._mel_prototypes is None:

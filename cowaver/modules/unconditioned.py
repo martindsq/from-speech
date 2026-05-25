@@ -5,18 +5,19 @@ from torch.optim import Optimizer, AdamW
 from torch.optim.lr_scheduler import LRScheduler, StepLR
 
 from .adapters import build_temporal_adapter
-from .common import unpack_batch
+from .common import CTCHeadMixin, unpack_batch
 from .decoders import build_decoder
 from .encoders import ImageToHorizontalFeatures
 from ..models import DataModule, TestResults, TrainableModule
 
 
-class CoWaverUnconditioned(TrainableModule):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, height_bands: int = 4, adapter: str = "convolutional", decoder: str = "convolutional", name_prefix: str = "cowaver_unconditioned"):
+class CoWaverUnconditioned(CTCHeadMixin, TrainableModule):
+    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, height_bands: int = 4, adapter: str = "convolutional", decoder: str = "convolutional", name_prefix: str = "cowaver_unconditioned", ctc_vocab_size: int = 0, ctc_weight: float = 0.0):
         adapter_suffix = "" if adapter == "convolutional" else f"_ad{adapter.replace('-', '_')}"
         decoder_suffix = "" if decoder == "convolutional" else f"_dc{decoder.replace('-', '_')}"
         height_suffix = f"_hb{height_bands}"
-        super().__init__(name=f"{name_prefix}_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{height_suffix}{adapter_suffix}{decoder_suffix}")
+        ctc_suffix = "" if ctc_weight == 0 else f"_ctc{ctc_weight:g}"
+        super().__init__(name=f"{name_prefix}_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{height_suffix}{adapter_suffix}{decoder_suffix}{ctc_suffix}")
         self.mel_bins = mel_bins
         self.visual_encoder = ImageToHorizontalFeatures(
             feature_dim=latent_dim,
@@ -36,8 +37,13 @@ class CoWaverUnconditioned(TrainableModule):
             mel_bins=mel_bins,
             seq_len=seq_len
         )
+        self._setup_ctc(
+            latent_dim=latent_dim,
+            ctc_vocab_size=ctc_vocab_size,
+            ctc_weight=ctc_weight,
+        )
 
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor, Tensor | None]:
         """Hace una inferencia.
 
         Parameters
@@ -59,16 +65,19 @@ class CoWaverUnconditioned(TrainableModule):
         h = self.visual_encoder(x)
         z = self.adapter(h)
         mel = self.decoder(z)
-        return mel, z
+        return mel, z, self.ctc_logits(h)
 
     def training_step(self, batch, batch_idx, phase: int):
         x, y, _, _ = unpack_batch(batch)
-        y_hat, _ = self(x)
-        return F.l1_loss(y_hat, y)
+        h = self.visual_encoder(x)
+        z = self.adapter(h)
+        y_hat = self.decoder(z)
+        mel_loss = F.l1_loss(y_hat, y)
+        return mel_loss + self.ctc_weight * self.ctc_training_loss(h, batch)
 
     def test_step(self, data: DataModule, batch: tuple) -> TestResults:
         x, _, targets, _ = unpack_batch(batch)
-        y_hat, _ = self(x)
+        y_hat, _, _ = self(x)
         prototypes = data.mel_prototypes(y_hat.device)
 
         distances = torch.abs(
@@ -95,12 +104,15 @@ class CoWaverUnconditioned(TrainableModule):
             lrs = (3e-6, 1e-4, 3e-4)
         else:
             lrs = (3e-6, 5e-5, 1e-4)
-        return AdamW(
-            [
+        param_groups = [
                 {"params": self.visual_encoder.parameters(), "lr": lrs[0]},
                 {"params": self.adapter.parameters(), "lr": lrs[1]},
                 {"params": self.decoder.parameters(), "lr": lrs[2]},
-            ],
+        ]
+        if self.ctc_head is not None:
+            param_groups.append({"params": self.ctc_head.parameters(), "lr": lrs[1]})
+        return AdamW(
+            param_groups,
             weight_decay=1e-4
         )
 

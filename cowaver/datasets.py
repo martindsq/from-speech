@@ -1,4 +1,5 @@
 import os
+import torch
 from torch.nn import Module
 from torch.utils.data import Dataset
 from .transforms import RandomPosition, RandomAlign
@@ -44,11 +45,12 @@ class TinySpeakDataset(Dataset):
         return waveform, target
 
 class ImageMelDataset(Dataset):
-    def __init__(self, base_dataset: TinySpeakDataset, position: RandomPosition | None = None, mel_bins: int = 40, task_id: int | None = None):
+    def __init__(self, base_dataset: TinySpeakDataset, position: RandomPosition | None = None, mel_bins: int = 40, task_id: int | None = None, char_to_idx: dict[str, int] | None = None):
         self.base_dataset = base_dataset
         self.position = position
         self.mel_bins = mel_bins
         self.task_id = task_id
+        self.char_to_idx = char_to_idx
 
     def __len__(self):
         return len(self.base_dataset)
@@ -67,9 +69,18 @@ class ImageMelDataset(Dataset):
             x_stride, y_stride = self.position()
         image = make_image(word, x_stride, y_stride)
 
+        if self.char_to_idx is None:
+            if self.task_id is None:
+                return (image, mel), target
+            return (image, mel), target, self.task_id
+
+        ctc_target = torch.tensor(
+            [self.char_to_idx[char] for char in word],
+            dtype=torch.long,
+        )
         if self.task_id is None:
-            return (image, mel), target
-        return (image, mel), target, self.task_id
+            return (image, mel), target, ctc_target
+        return (image, mel), target, self.task_id, ctc_target
 
 
 class RelabeledDataset(Dataset):
@@ -90,5 +101,10 @@ class RelabeledDataset(Dataset):
         if len(item) == 2:
             elements, label = item
             return elements, label + self.label_offset
-        elements, label, task_id = item
-        return elements, label + self.label_offset, task_id
+        if len(item) == 3:
+            elements, label, ctc_target = item
+            return elements, label + self.label_offset, ctc_target
+        if len(item) == 4:
+            elements, label, task_id, ctc_target = item
+            return elements, label + self.label_offset, task_id, ctc_target
+        raise ValueError("Unsupported dataset item shape.")

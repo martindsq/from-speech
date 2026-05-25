@@ -11,7 +11,7 @@ from .adapters import (
     build_temporal_adapter,
 )
 from .cornet import CORblock_Z, CORnet_Z, Flatten, Identity
-from .common import ResidualTemporalBlock, unpack_batch
+from .common import CTCHeadMixin, ResidualTemporalBlock, unpack_batch, unpack_ctc_targets
 from .decoders import (
     DECODER_REGISTRY,
     ConvolutionalMelDecoder,
@@ -50,6 +50,7 @@ __all__ = [
     "CoWaverUnconditioned",
     "ConvolutionalMelDecoder",
     "ConvolutionalTemporalAdapter",
+    "CTCHeadMixin",
     "DECODER_REGISTRY",
     "Flatten",
     "HorizontalFeaturesToMel",
@@ -69,4 +70,5 @@ __all__ = [
     "build_model",
     "build_temporal_adapter",
     "unpack_batch",
+    "unpack_ctc_targets",
 ]

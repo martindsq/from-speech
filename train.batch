@@ -30,7 +30,7 @@ cd ~/cowaver
 # Example:
 #   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49 8 50
 #   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49 8 50 1 0 0 0.5 0.5 0 0.1 0.5 0.4
-#   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49 8 50 1 0 0 0.5 0.5 0 0.1 0.5 0.4 reading-bridge
+#   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49 8 50 1 0 0 0.5 0.5 0 0.1 0.5 0.4 0.2 reading-bridge
 
 ARCHITECTURE=${1:?Missing architecture}
 DECODER=${2:?Missing decoder}
@@ -52,7 +52,8 @@ PHASE2_WORDS=${17:-0}
 PHASE3_LETTERS=${18:-0.10}
 PHASE3_PHONES=${19:-0.15}
 PHASE3_WORDS=${20:-0.75}
-RUN_LABEL=${21:-}
+CTC_WEIGHT=${21:-0}
+RUN_LABEL=${22:-}
 RUN_ID=${SLURM_JOB_ID:-$(date +%Y%m%d%H%M%S)}
 CHECKPOINTS_PATH=checkpoints/$ARCHITECTURE/$ADAPTER/$DECODER/
 if [ -n "$RUN_LABEL" ]; then
@@ -74,5 +75,6 @@ python train.py \
   -p1 "$PHASE1_LETTERS" "$PHASE1_PHONES" "$PHASE1_WORDS" \
   -p2 "$PHASE2_LETTERS" "$PHASE2_PHONES" "$PHASE2_WORDS" \
   -p3 "$PHASE3_LETTERS" "$PHASE3_PHONES" "$PHASE3_WORDS" \
+  --ctc-weight "$CTC_WEIGHT" \
   --max-epochs "$MAX_EPOCHS" \
   --max-classes "$MAX_CLASSES"

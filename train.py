@@ -1,4 +1,5 @@
 import argparse
+import os
 from pathlib import Path
 from torchvision.transforms import Compose
 from cowaver.datamodules import TinyMel, MixedTinyMel
@@ -43,6 +44,7 @@ parser.add_argument("--height-bands", "-hb", type=int, default=4)
 parser.add_argument("--seq-len", type=int, default=49)
 parser.add_argument("--max-epochs", type=int, default=30)
 parser.add_argument("--max-classes", type=int, default=200)
+parser.add_argument("--ctc-weight", type=float, default=0.0)
 parser.add_argument(
     "--phase1-proportions",
     "-p1",
@@ -72,6 +74,8 @@ if args.max_epochs <= 0:
     parser.error("--max-epochs must be positive")
 if args.max_classes <= 0:
     parser.error("--max-classes must be positive")
+if args.ctc_weight < 0:
+    parser.error("--ctc-weight must be non-negative")
 data_path = Path(args.data)
 checkpoints_path = None
 if args.checkpoints is not None:
@@ -91,6 +95,7 @@ print("--height-bands", args.height_bands)
 print("--seq-len", args.seq_len)
 print("--max-epochs", args.max_epochs)
 print("--max-classes", args.max_classes)
+print("--ctc-weight", args.ctc_weight)
 print("--phase1-proportions", args.phase1_proportions)
 print("--phase2-proportions", args.phase2_proportions)
 print("--phase3-proportions", args.phase3_proportions)
@@ -103,6 +108,34 @@ tiny_letter_path = descomprimir_archivo(tiny_letter_xz_path, data_path)
 tiny_phones_path = descomprimir_archivo(tiny_phones_xz_path, data_path)
 tiny_mswc_path = descomprimir_archivo(tiny_mswc_xz_path, data_path)
 dispositivo = encontrar_dispositivo()
+
+def collect_classes(base_dir: Path, max_classes: int | None = None):
+    classes = [
+        d for d in sorted(os.listdir(base_dir))
+        if not d.startswith(".") and os.path.isdir(base_dir / d)
+    ]
+    if max_classes is not None:
+        classes = classes[:max_classes]
+    return classes
+
+def build_char_vocab(paths: list[tuple[Path, int | None]]):
+    chars = set()
+    for path, max_classes in paths:
+        for split in ("train", "test"):
+            for class_name in collect_classes(path / split, max_classes=max_classes):
+                chars.update(class_name)
+    return {char: index + 1 for index, char in enumerate(sorted(chars))}
+
+char_to_idx = None
+ctc_vocab_size = 0
+if args.ctc_weight > 0:
+    char_to_idx = build_char_vocab([
+        (tiny_letter_path, None),
+        (tiny_phones_path, args.max_classes),
+        (tiny_mswc_path, args.max_classes),
+    ])
+    ctc_vocab_size = len(char_to_idx) + 1
+    print("--ctc-vocab-size", ctc_vocab_size)
 
 def eval_cowaver(cowaver: CoWaver, letters: TinyMel, phones: TinyMel, words: TinyMel):
     print(f"Evaluando en {tiny_letter_path.stem}", end="... ")
@@ -137,7 +170,8 @@ def train_cowaver(cowaver: CoWaver):
         base_dir=tiny_letter_path,
         mel_bins=cowaver.mel_bins,
         position=RandomPosition(mean=0.5, std=0.1),
-        task_id=1
+        task_id=1,
+        char_to_idx=char_to_idx,
     )
     phones = TinyMel(
         base_dir=tiny_phones_path,
@@ -145,6 +179,7 @@ def train_cowaver(cowaver: CoWaver):
         position=RandomPosition(mean=0.5, std=0.1),
         task_id=1,
         max_classes=args.max_classes,
+        char_to_idx=char_to_idx,
     )
     words = TinyMel(
         base_dir=tiny_mswc_path,
@@ -152,6 +187,7 @@ def train_cowaver(cowaver: CoWaver):
         position=RandomPosition(mean=0.5, std=0.1),
         task_id=2,
         max_classes=args.max_classes,
+        char_to_idx=char_to_idx,
     )
     entrenar_red(
         net=cowaver,
@@ -190,6 +226,8 @@ model_kwargs = {
     "seq_len": args.seq_len,
     "decoder": args.decoder,
     "adapter": args.adapter,
+    "ctc_vocab_size": ctc_vocab_size,
+    "ctc_weight": args.ctc_weight,
 }
 
 train_cowaver(build_model(args.architecture, **model_kwargs))

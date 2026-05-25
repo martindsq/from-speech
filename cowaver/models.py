@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import torch
 from torch import Tensor, nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler, LambdaLR
@@ -26,6 +27,15 @@ class DataModule(ABC):
         pass
         
     def collate_fn(self, batch):
+        if len(batch[0]) in (3, 4) and torch.is_tensor(batch[0][-1]):
+            prefix = [item[:-1] for item in batch]
+            ctc_targets = [item[-1] for item in batch]
+            collated = default_collate(prefix)
+            target_lengths = torch.tensor(
+                [target.numel() for target in ctc_targets],
+                dtype=torch.long,
+            )
+            return (*collated, torch.cat(ctc_targets), target_lengths)
         return default_collate(batch)
 
     def train_loader(self) -> DataLoader:
