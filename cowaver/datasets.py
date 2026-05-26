@@ -6,20 +6,25 @@ from .transforms import RandomPosition, RandomAlign
 from .utils import cargar_audio, extract_mel, make_image, normalizar_texto
 
 class TinySpeakDataset(Dataset):
-    def __init__(self, base_dir: str, transform: Module | None = None, max_classes: int | None = None):
+    def __init__(self, base_dir: str, transform: Module | None = None, classes: list[str] | None = None):
         self.base_dir = base_dir
-        if max_classes is not None and max_classes <= 0:
-            raise ValueError("max_classes must be positive.")
         if transform is None:
             self.transform = RandomAlign()
         else:
             self.transform = transform
-        classes = [
-            d for d in sorted(os.listdir(base_dir))
-            if not d.startswith(".") and os.path.isdir(os.path.join(base_dir, d))
-        ]
-        if max_classes is not None:
-            classes = classes[:max_classes]
+        if classes is None:
+            classes = [
+                d for d in sorted(os.listdir(base_dir))
+                if not d.startswith(".") and os.path.isdir(os.path.join(base_dir, d))
+            ]
+        else:
+            classes = list(classes)
+            missing = [
+                cls for cls in classes
+                if not os.path.isdir(os.path.join(base_dir, cls))
+            ]
+            if missing:
+                raise ValueError(f"classes not found in {base_dir}: {missing}")
         self.words = classes
         self.class_to_idx = {word: i for i, word in enumerate(self.words)}
         self.samples = []
