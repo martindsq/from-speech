@@ -135,6 +135,56 @@ Luego se ajustó `ImageToHorizontalFeatures` para evitar interpolaciones cuando 
 
 La interpretación actual es que preservar algo de estructura vertical ayuda, y que el encoder no debería forzar interpolaciones innecesarias. Los candidatos principales son entonces `ws7-hb7` y `ws20-hb4`: el primero explota la grilla nativa del encoder y el segundo parece más robusto en métricas top-k.
 
+## CTC y pooling vertical
+
+Para inducir composicionalidad se agregó una cabeza CTC auxiliar sobre la secuencia horizontal producida por el encoder visual. La pérdida total de entrenamiento queda:
+
+```text
+loss = mel_loss + ctc_weight * ctc_loss
+```
+
+La cabeza CTC predice la secuencia de caracteres normalizados de la palabra renderizada. Los acentos se normalizan a la vocal base, mientras que `ñ` se conserva como símbolo propio. En los experimentos siguientes se usó `ctc_weight=0.1`, arquitectura `dual-route`, adapter y decoder convolucionales, curriculum `word-heavy`, y el adapter convolucional local con kernels `3,3,3` sin dilatación.
+
+Primero se evaluó si CTC ayudaba sobre la configuración nativa `ws7-hb7` con corridas cortas (`max_epochs=8`, `max_classes=50`). Las métricas son las de la fase 3:
+
+| Configuracion | Letras | Phones | MSWC |
+| :-- | :--: | :--: | :--: |
+| `ws7-hb7`, sin CTC, kernel previo | 23.49 / 43.62 / 63.76 | 24 / 52 / 64 | 6 / 20 / 28 |
+| `ws7-hb7`, sin CTC, kernel 3 | 20.13 / 36.91 / 53.69 | **30 / 64 / 72** | 6 / 16 / 24 |
+| `ws7-hb7`, CTC 0.1, kernel 3 | 19.35 / 41.94 / 67.74 | 10 / 26 / 44 | 20 / 36 / 40 |
+
+Reducir el kernel del adapter convolucional de la configuración previa a `3,3,3` mejora la retención en phones cuando no hay CTC, lo cual sugiere que mezclar demasiado rápido toda la palabra perjudica la ruta fonológica. Al activar CTC, el efecto principal es distinto: sube mucho MSWC (`6` a `20` top-1 en la corrida corta), aunque phones vuelve a caer en fase 3.
+
+Luego se compararon resoluciones horizontales y verticales manteniendo CTC y kernel 3, todavía en corridas cortas (`max_epochs=8`, `max_classes=50`):
+
+| Configuracion | Letras | Phones | MSWC |
+| :-- | :--: | :--: | :--: |
+| `ws7-hb7` | 19.35 / 41.94 / 67.74 | 10 / 26 / 44 | 20 / 36 / 40 |
+| `ws7-hb4` | 22.58 / 38.71 / 64.52 | 10 / 34 / 52 | 18 / 32 / 38 |
+| `ws12-hb7` | 25.81 / 38.71 / 58.06 | 10 / 26 / 44 | 16 / 28 / 36 |
+| `ws12-hb4` | 22.58 / 38.71 / 54.84 | 10 / 26 / 48 | **22** / 30 / 36 |
+| `ws16-hb7` | 25.81 / 45.16 / 61.29 | **12** / 28 / 46 | 18 / 32 / **44** |
+
+Las resoluciones interpoladas mejoran algunas métricas, pero agregan un hiperparámetro difícil de justificar: el mapa IT nativo de CORnet-Z ya es `7x7`. Por eso se probó una alternativa más interpretable: preservar los 7 pasos horizontales nativos y promediar la altura con `AdaptiveAvgPool2d((1, 7))`. Esta variante produce la misma forma de salida que `ws7-hb7`, `[B, 7, feature_dim]`, pero introduce invariancia vertical explícita.
+
+En corridas cortas (`max_epochs=8`, `max_classes=50`), el pooling vertical mejora letras pero pierde algo en MSWC:
+
+| Encoder | Letras | Phones | MSWC |
+| :-- | :--: | :--: | :--: |
+| `ws7-hb7` full-height | 19.35 / 41.94 / 67.74 | 10 / 26 / 44 | **20 / 36 / 40** |
+| pooled vertical | **22.58** / 41.94 / **70.97** | 10 / 32 / 52 | 16 / 28 / 38 |
+
+Con más entrenamiento y más clases (`max_epochs=15`, `max_classes=100`), el pooling vertical se recupera y pasa a ser el mejor compromiso global:
+
+| Configuracion | Letras | Phones | MSWC |
+| :-- | :--: | :--: | :--: |
+| `ws7-hb7` full-height | 32.26 / 58.06 / 67.74 | 18 / 36 / **45** | **16** / **26** / 32 |
+| pooled vertical | **38.71** / 58.06 / **74.19** | 18 / 36 / 43 | **16** / 24 / **33** |
+| `ws12-hb4` interpolado | 32.26 / **61.29** / **74.19** | **20** / **38** / **45** | 11 / 25 / **34** |
+| `ws20-hb4` interpolado | 32.26 / 58.06 / **74.19** | 15 / 35 / 44 | 15 / 25 / 31 |
+
+La lectura actual es que CTC aporta una presión composicional útil y que el pooling vertical es una forma limpia de obtener una secuencia ortográfica horizontal invariante a la posición vertical. Frente a las resoluciones interpoladas, pooled no maximiza todas las métricas individuales, pero ofrece el mejor balance: gana claramente en letras, empata o queda muy cerca en phones y MSWC, y evita introducir pasos horizontales artificiales. Por ahora, la configuración principal recomendada es `AvgPooledITEncoder` con CTC `0.1`, kernel convolucional `3,3,3`, `dual-route` y curriculum `word-heavy`.
+
 ## Configuración del modelo convolucional
 
 La fase 1 entrena con letras renderizadas aisladas emparejadas con sus representaciones de audio, usando posición aleatoria del texto pero sin aumentación de escena acústica.

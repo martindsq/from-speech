@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import LRScheduler, StepLR
 from .adapters import build_temporal_adapter
 from .common import CTCHead, unpack_batch
 from .decoders import build_decoder
-from .encoders import ImageToHorizontalFeatures
+from .encoders import AvgPooledITEncoder
 from ..models import DataModule, TestResults, TrainableModule
 
 
@@ -19,7 +19,7 @@ class CoWaverDualRoute(TrainableModule):
         super().__init__(name=f"cowaver_dual_route_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{height_suffix}{adapter_suffix}{decoder_suffix}{ctc_suffix}")
         self.mel_bins = mel_bins
         self.num_tasks = num_tasks
-        self.visual_encoder = ImageToPooledHorizontalFeatures(
+        self.visual_encoder = AvgPooledITEncoder(
             feature_dim=latent_dim
         )
         self.adapter = build_temporal_adapter(

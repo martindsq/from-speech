@@ -56,7 +56,7 @@ class ImageToHorizontalFeatures(nn.Module):
         return features.transpose(1, 2)
 
 
-class ImageToPooledHorizontalFeatures(nn.Module):
+class AvgPooledITEncoder(nn.Module):
     def __init__(self, feature_dim: int = 256):
         super().__init__()
 
@@ -67,7 +67,7 @@ class ImageToPooledHorizontalFeatures(nn.Module):
         self.projector = nn.Conv1d(512, feature_dim, kernel_size=1)
 
     def forward(self, x):
-        """Pool the native CORnet IT map vertically into a horizontal sequence.
+        """Average-pool the native CORnet IT map into a horizontal sequence.
 
         Returns
         -------
