@@ -90,7 +90,7 @@ cantidad de clases usadas en `tiny-phones-200` y `tiny-mswc-200`:
 
 ```bash
 python train.py \
-  --max-epochs 8 \
+  --theta-max 24 \
   --max-classes 50
 ```
 
@@ -160,7 +160,7 @@ ws24-hb1
 ws28-hb1
 ```
 
-Todos usan `max_epochs=8` y `max_classes=50`. Mas abajo en el mismo archivo quedan
+Todos usan `theta_max=24` y `max_classes=50`. Mas abajo en el mismo archivo quedan
 comentados algunos controles `hb4` y finalistas completos para descomentar
 cuando haga falta.
 
@@ -170,10 +170,10 @@ Cada job llama a `train.batch`, que recibe los parametros del modelo en este
 orden:
 
 ```text
-architecture decoder adapter latent_dim hidden_size mel_bins width_steps height_bands seq_len max_epochs max_classes
+architecture decoder adapter latent_dim hidden_size max_classes theta_max epsilon_zero theta epsilon_theta
 ```
 
-`max_epochs` y `max_classes` son opcionales y por defecto valen `30` y `200`.
+Los parametros desde `max_classes` en adelante son opcionales.
 
 `train.batch` usa una carpeta temporal unica en scratch para cada job:
 

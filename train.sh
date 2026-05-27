@@ -2,52 +2,11 @@
 
 MAIL_USER=${USER_MAIL:?Missing USER_MAIL}
 
-# Fases: "letters phones words"
-# sbatch --job-name="train-curr-baseline-ws7-hb7" --mail-user="$MAIL_USER" \
-#   train.batch dual-route convolutional convolutional 256 256 80 7 7 49 8 50 \
-#   1 0 0 \
-#   0.25 0.75 0 \
-#   0.10 0.15 0.75 \
-#   baseline
-# 
-# sbatch --job-name="train-curr-phonics-first-ws7-hb7" --mail-user="$MAIL_USER" \
-#   train.batch dual-route convolutional convolutional 256 256 80 7 7 49 8 50 \
-#   1 0 0 \
-#   0.50 0.50 0 \
-#   0.05 0.55 0.40 \
-#   phonics-first
-# 
-# sbatch --job-name="train-curr-decoding-bridge-ws7-hb7" --mail-user="$MAIL_USER" \
-#   train.batch dual-route convolutional convolutional 256 256 80 7 7 49 8 50 \
-#   1 0 0 \
-#   0.60 0.40 0 \
-#   0.10 0.50 0.40 \
-#   decoding-bridge
-# 
-# sbatch --job-name="train-curr-word-heavy-ws7-hb7" --mail-user="$MAIL_USER" \
-#   train.batch dual-route convolutional convolutional 256 256 80 7 7 49 8 50 \
-#   1 0 0 \
-#   0.20 0.60 0.20 \
-#   0.05 0.10 0.85 \
-#   word-heavy
+sbatch --job-name="train-lr1e4-t30-e15-c100" --mail-user="$MAIL_USER" \
+  train.batch dual-route convolutional convolutional 256 256 100 45 1e-4 30 1e-5
 
-sbatch --job-name="train-curr-word-heavy-soft-ws7-hb7" --mail-user="$MAIL_USER" \
-  train.batch dual-route convolutional convolutional 256 256 80 7 7 49 8 50 \
-  1 0 0 \
-  0.15 0.60 0.25 \
-  0.05 0.15 0.80 \
-  word-heavy-soft
+sbatch --job-name="train-lr3e4-t30-e15-c100" --mail-user="$MAIL_USER" \
+  train.batch dual-route convolutional convolutional 256 256 100 45 3e-4 30 3e-5
 
-sbatch --job-name="train-curr-word-heavy-balanced-ws7-hb7" --mail-user="$MAIL_USER" \
-  train.batch dual-route convolutional convolutional 256 256 80 7 7 49 8 50 \
-  1 0 0 \
-  0.20 0.50 0.30 \
-  0.05 0.20 0.75 \
-  word-heavy-balanced
-
-sbatch --job-name="train-curr-word-heavy-phonics-retain-ws7-hb7" --mail-user="$MAIL_USER" \
-  train.batch dual-route convolutional convolutional 256 256 80 7 7 49 8 50 \
-  1 0 0 \
-  0.15 0.70 0.15 \
-  0.05 0.25 0.70 \
-  word-heavy-phonics-retain
+sbatch --job-name="train-lr3e4-t45-e15-c100" --mail-user="$MAIL_USER" \
+  train.batch dual-route convolutional convolutional 256 256 100 45 3e-4 45 3e-5

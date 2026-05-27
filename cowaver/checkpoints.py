@@ -1,7 +1,7 @@
 from torch import load, device, save
 from pathlib import Path
 from dataclasses import asdict
-from .models import TrainHistory, TrainableModule
+from .models import TrainHistory, TrainProgramme, TrainableModule
 
 CHECKPOINTS_ROOT = Path('checkpoints')
 
@@ -23,14 +23,14 @@ def ruta_al_checkpoint(net: TrainableModule, phase: int, folder: Path):
     ordinal = lambda n: "%d%s" % (n,"tsnrhtdd"[(n//10%10!=1)*(n%10<4)*n%10::4])
     return folder / f"{net.name}_{ordinal(phase)}_phase.pt"
 
-def guardar_checkpoint(net: TrainableModule, train_history: TrainHistory, phase: int = 1, folder: Path = CHECKPOINTS_ROOT):
+def guardar_checkpoint(net: TrainableModule, train_history: TrainHistory, programme: TrainProgramme, phase: int = 1, folder: Path = CHECKPOINTS_ROOT):
     path = ruta_al_checkpoint(net, phase, folder)
     print(f"Guardando checkpoint en {path}", end="... ")
     path.parent.mkdir(parents=True, exist_ok=True)
     ckpt = {
         "model": net.state_dict(),
         "epoch": train_history.num_epochs,
-        "optimizer": net.optimizer(phase).state_dict(),
+        "optimizer": net.optimizer(phase, programme).state_dict(),
         "extra": {
             "history": asdict(train_history),
             "ckpt": str(path)

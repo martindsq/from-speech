@@ -21,60 +21,34 @@ cd ~/cowaver
 # Adapters:
 #   convolutional, recurrent, transformer
 #
-# Proportions:
-#   letters, phonetized words, words
-#
-# Model dimensions:
-#   latent_dim, hidden_size, mel_bins, width_steps, height_bands, seq_len
-#
 # Example:
-#   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49 8 50
-#   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49 8 50 1 0 0 0.5 0.5 0 0.1 0.5 0.4
-#   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 80 24 4 49 8 50 1 0 0 0.5 0.5 0 0.1 0.5 0.4 0.2 reading-bridge
+#   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 50
+#   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 50 90 3e-4 30 3e-5
 
 ARCHITECTURE=${1:?Missing architecture}
 DECODER=${2:?Missing decoder}
-ADAPTER=${3:-convolutional}
+ADAPTER=${3:?Missing adapter}
 LATENT_DIM=${4:-256}
 HIDDEN_SIZE=${5:-256}
-MEL_BINS=${6:-80}
-WIDTH_STEPS=${7:-24}
-HEIGHT_BANDS=${8:-4}
-SEQ_LEN=${9:-49}
-MAX_EPOCHS=${10:-30}
-MAX_CLASSES=${11:-200}
-PHASE1_LETTERS=${12:-1}
-PHASE1_PHONES=${13:-0}
-PHASE1_WORDS=${14:-0}
-PHASE2_LETTERS=${15:-0.25}
-PHASE2_PHONES=${16:-0.75}
-PHASE2_WORDS=${17:-0}
-PHASE3_LETTERS=${18:-0.10}
-PHASE3_PHONES=${19:-0.15}
-PHASE3_WORDS=${20:-0.75}
-CTC_WEIGHT=${21:-0}
-RUN_LABEL=${22:-}
-RUN_ID=${SLURM_JOB_ID:-$(date +%Y%m%d%H%M%S)}
-CHECKPOINTS_PATH=checkpoints/$ARCHITECTURE/$ADAPTER/$DECODER/
-if [ -n "$RUN_LABEL" ]; then
-  CHECKPOINTS_PATH=checkpoints/$ARCHITECTURE/$ADAPTER/$DECODER/$RUN_LABEL/
-fi
+MAX_CLASSES=${6:-200}
+THETA_MAX=${7:-90}
+EPSILON_ZERO=${8:-3e-4}
+THETA=${9:-60}
+EPSILON_THETA=${10:-3e-5}
 
 python train.py \
-  -d /scratch/$USER/$RUN_ID \
-  -c "$CHECKPOINTS_PATH" \
+  --data /scratch/$USER/${SLURM_JOB_ID:-$(date +%Y%m%d%H%M%S)} \
   --architecture $ARCHITECTURE \
   --adapter $ADAPTER \
   --decoder $DECODER \
   --latent-dim $LATENT_DIM \
   --hidden-size $HIDDEN_SIZE \
-  --mel-bins $MEL_BINS \
-  --width-steps $WIDTH_STEPS \
-  --height-bands $HEIGHT_BANDS \
-  --seq-len $SEQ_LEN \
-  -p1 "$PHASE1_LETTERS" "$PHASE1_PHONES" "$PHASE1_WORDS" \
-  -p2 "$PHASE2_LETTERS" "$PHASE2_PHONES" "$PHASE2_WORDS" \
-  -p3 "$PHASE3_LETTERS" "$PHASE3_PHONES" "$PHASE3_WORDS" \
-  --ctc-weight "$CTC_WEIGHT" \
-  --max-epochs "$MAX_EPOCHS" \
-  --max-classes "$MAX_CLASSES"
+  --max-classes "$MAX_CLASSES" \
+  --theta-max "$THETA_MAX" \
+  --epsilon-zero "$EPSILON_ZERO" \
+  --theta "$THETA" \
+  --epsilon-theta "$EPSILON_THETA" \
+  --phase1-proportions 1 0 0 \
+  --phase2-proportions 0.20 0.60 0.20 \
+  --phase3-proportions 0.05 0.10 0.85 \
+  --ctc-weight 0.1

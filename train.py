@@ -4,6 +4,7 @@ from pathlib import Path
 from torchvision.transforms import Compose
 from cowaver.datamodules import TinyMel, MixedTinyMel
 from cowaver.modules import DECODER_REGISTRY, MODEL_REGISTRY, TEMPORAL_ADAPTER_REGISTRY, CoWaver, build_model
+from cowaver.models import TrainProgramme
 from cowaver.transforms import RandomAlign, RandomPosition, RandomScene
 from cowaver.utils import (
     descomprimir_archivo,
@@ -16,37 +17,91 @@ from cowaver.utils import (
 )
 from cowaver.checkpoints import cargar_checkpoint
 
-parser = argparse.ArgumentParser()
-# Available architectures: unconditioned, conditioned, dual-route
-# Available temporal adapters: convolutional, recurrent, transformer
-# Available decoders: convolutional, recurrent, transformer
-parser.add_argument('--data', '-d', default="data")
-parser.add_argument('--checkpoints', '-c', default=None)
-parser.add_argument(
-    "--architecture",
-    "-a",
-    choices=sorted(MODEL_REGISTRY),
-    default="unconditioned",
+parser = argparse.ArgumentParser(
+    description=(
+        "Train a CoWaver model on the tiny letter, phone, and word datasets "
+        "using a three-phase curriculum with configurable data proportions, "
+        "CTC auxiliary loss, and linear learning-rate decay."
+    )
 )
 parser.add_argument(
-    "--decoder",
-    choices=sorted(DECODER_REGISTRY),
+    '--data', '-d',
+    default="data",
+    help="Directory used to unpack temporary training datasets."
+)
+parser.add_argument(
+    '--checkpoints', '-c',
+    default=None,
+    help="Directory where phase checkpoints are saved. Omit to skip saving."
+)
+parser.add_argument(
+    "--architecture", "-a",
+    choices=sorted(MODEL_REGISTRY),
+    default="unconditioned",
+    help="Model architecture to train.",
+)
+parser.add_argument(
+    "--decoder", choices=sorted(DECODER_REGISTRY),
     default="convolutional",
+    help="Mel decoder architecture.",
 )
 parser.add_argument(
     "--adapter",
     choices=sorted(TEMPORAL_ADAPTER_REGISTRY),
     default="convolutional",
+    help="Temporal adapter architecture between visual features and decoder.",
 )
-parser.add_argument("--latent-dim", type=int, default=256)
-parser.add_argument("--hidden-size", type=int, default=256)
-parser.add_argument("--mel-bins", type=int, default=80)
-parser.add_argument("--width-steps", "-ws", type=int, default=24)
-parser.add_argument("--height-bands", "-hb", type=int, default=4)
-parser.add_argument("--seq-len", type=int, default=49)
-parser.add_argument("--max-epochs", type=int, default=30)
-parser.add_argument("--max-classes", type=int, default=200)
-parser.add_argument("--ctc-weight", type=float, default=0.0)
+parser.add_argument(
+    "--latent-dim",
+    type=int,
+    default=256,
+    help="Latent feature dimension used by adapters and decoders."
+)
+parser.add_argument(
+    "--hidden-size",
+    type=int,
+    default=256,
+    help="Hidden size used by decoder modules."
+)
+parser.add_argument(
+    "--theta-max",
+    type=int,
+    default=90,
+    help="Total number of epochs across all curriculum phases."
+)
+parser.add_argument(
+    "--max-classes",
+    type=int,
+    default=200,
+    help="Maximum number of word classes to include"
+)
+parser.add_argument(
+    "--ctc-weight",
+    type=float,
+    default=0.1,
+    help="Weight of the auxiliary CTC loss. Use 0 to disable it."
+)
+parser.add_argument(
+    "--epsilon-zero",
+    "-e0",
+    type=float,
+    default=3e-4,
+    help="Initial learning rate.",
+)
+parser.add_argument(
+    "--theta",
+    "-t",
+    type=int,
+    default=60,
+    help="Global epoch where the learning-rate decay reaches epsilon_theta.",
+)
+parser.add_argument(
+    "--epsilon-theta",
+    "-et",
+    type=float,
+    default=3e-5,
+    help="Learning rate at epoch theta and for the flat tail of training.",
+)
 parser.add_argument(
     "--phase1-proportions",
     "-p1",
@@ -54,30 +109,43 @@ parser.add_argument(
     type=float,
     default=[1.0, 0.0, 0.0],
     metavar=("LETTERS", "PHONES", "WORDS"),
+    help="Sampling proportions for letters, phones, and words in phase 1.",
 )
 parser.add_argument(
     "--phase2-proportions",
     "-p2",
     nargs=3,
     type=float,
-    default=[0.25, 0.75, 0.0],
+    default=[0.20, 0.60, 0.20],
     metavar=("LETTERS", "PHONES", "WORDS"),
+    help="Sampling proportions for letters, phones, and words in phase 2.",
 )
 parser.add_argument(
     "--phase3-proportions",
     "-p3",
     nargs=3,
     type=float,
-    default=[0.10, 0.15, 0.75],
+    default=[0.05, 0.10, 0.85],
     metavar=("LETTERS", "PHONES", "WORDS"),
+    help="Sampling proportions for letters, phones, and words in phase 3.",
 )
 args = parser.parse_args()
-if args.max_epochs <= 0:
-    parser.error("--max-epochs must be positive")
+if args.theta_max <= 0:
+    parser.error("--theta-max must be positive")
+if args.theta_max % 3 != 0:
+    parser.error("--theta-max must be divisible by 3")
 if args.max_classes <= 0:
     parser.error("--max-classes must be positive")
 if args.ctc_weight < 0:
     parser.error("--ctc-weight must be non-negative")
+if args.epsilon_zero <= 0:
+    parser.error("--epsilon-zero must be positive")
+if args.theta <= 0:
+    parser.error("--theta must be positive")
+if args.theta > args.theta_max:
+    parser.error("--theta must be less than or equal to --theta-max")
+if args.epsilon_theta <= 0 or args.epsilon_theta > args.epsilon_zero:
+    parser.error("--epsilon-theta must be in the range (0, epsilon-zero]")
 
 data_path = Path(args.data)
 checkpoints_path = None
@@ -92,16 +160,23 @@ print("--adapter", args.adapter)
 print("--decoder", args.decoder)
 print("--latent-dim", args.latent_dim)
 print("--hidden-size", args.hidden_size)
-print("--mel-bins", args.mel_bins)
-print("--width-steps", args.width_steps)
-print("--height-bands", args.height_bands)
-print("--seq-len", args.seq_len)
-print("--max-epochs", args.max_epochs)
+print("--theta-max", args.theta_max)
 print("--max-classes", args.max_classes)
 print("--ctc-weight", args.ctc_weight)
+print("--epsilon-zero", args.epsilon_zero)
+print("--theta", args.theta)
+print("--epsilon-theta", args.epsilon_theta)
 print("--phase1-proportions", args.phase1_proportions)
 print("--phase2-proportions", args.phase2_proportions)
 print("--phase3-proportions", args.phase3_proportions)
+
+programme = TrainProgramme(
+    theta_max=args.theta_max,
+    num_phases=3,
+    epsilon_zero=args.epsilon_zero,
+    theta=args.theta,
+    epsilon_theta=args.epsilon_theta,
+)
 
 tiny_letter_xz_path = Path("tiny-letter-30.tar.xz")
 tiny_phones_xz_path = Path("tiny-phones-200.tar.xz")
@@ -219,7 +294,7 @@ def train_cowaver(cowaver: CoWaver):
     entrenar_red(
         net=cowaver,
         data=make_phase_data(letters, phones, words_seen, args.phase1_proportions),
-        num_epochs=args.max_epochs,
+        programme=programme,
         phase=1,
         dispositivo=dispositivo,
         checkpoints_folder=checkpoints_path
@@ -228,7 +303,7 @@ def train_cowaver(cowaver: CoWaver):
     entrenar_red(
         net=cowaver,
         data=make_phase_data(letters, phones, words_seen, args.phase2_proportions),
-        num_epochs=args.max_epochs,
+        programme=programme,
         phase=2,
         dispositivo=dispositivo,
         checkpoints_folder=checkpoints_path
@@ -237,7 +312,7 @@ def train_cowaver(cowaver: CoWaver):
     entrenar_red(
         net=cowaver,
         data=make_phase_data(letters, phones, words_seen, args.phase3_proportions),
-        num_epochs=args.max_epochs,
+        programme=programme,
         phase=3,
         dispositivo=dispositivo,
         checkpoints_folder=checkpoints_path
@@ -247,16 +322,13 @@ def train_cowaver(cowaver: CoWaver):
 model_kwargs = {
     "latent_dim": args.latent_dim,
     "hidden_size": args.hidden_size,
-    "mel_bins": args.mel_bins,
-    "width_steps": args.width_steps,
-    "height_bands": args.height_bands,
-    "seq_len": args.seq_len,
+    "mel_bins": 80,
+    "seq_len": 49,
     "decoder": args.decoder,
     "adapter": args.adapter,
     "ctc_vocab_size": ctc_vocab_size,
     "ctc_weight": args.ctc_weight,
 }
-
 train_cowaver(build_model(args.architecture, **model_kwargs))
 
 borrar_carpeta(tiny_letter_path)

@@ -108,6 +108,16 @@ class TinyMel(DataModule):
     def labels_from_batch(self, batch):
         return batch[1]
 
+    def collate_fn(self, batch):
+        prefix = [item[:-1] for item in batch]
+        ctc_targets = [item[-1] for item in batch]
+        collated = torch.utils.data.default_collate(prefix)
+        target_lengths = torch.tensor(
+            [target.numel() for target in ctc_targets],
+            dtype=torch.long,
+        )
+        return (*collated, torch.cat(ctc_targets), target_lengths)
+
     def mel_prototypes(self, dispositivo=None):
         if self._mel_prototypes is None:
             item0 = self.test_set[0]

@@ -185,6 +185,42 @@ Con más entrenamiento y más clases (`max_epochs=15`, `max_classes=100`), el po
 
 La lectura actual es que CTC aporta una presión composicional útil y que el pooling vertical es una forma limpia de obtener una secuencia ortográfica horizontal invariante a la posición vertical. Frente a las resoluciones interpoladas, pooled no maximiza todas las métricas individuales, pero ofrece el mejor balance: gana claramente en letras, empata o queda muy cerca en phones y MSWC, y evita introducir pasos horizontales artificiales. Por ahora, la configuración principal recomendada es `AvgPooledITEncoder` con CTC `0.1`, kernel convolucional `3,3,3`, `dual-route` y curriculum `word-heavy`.
 
+### Split de generalización en palabras
+
+Para medir composicionalidad de manera más directa, `train.py` pasó a reservar un 10% de las clases de `tiny-mswc-200` como palabras `heldout`. Las letras no se dividen: `tiny-letter-30` funciona como alfabeto compartido. Phones tampoco se dividen por ahora. Con `max_classes=100`, el protocolo queda:
+
+```text
+letters: 30 clases, todas disponibles
+phones: 100 clases, todas disponibles
+words: 90 clases seen + 10 clases heldout
+```
+
+En la corrida actual, las palabras reservadas fueron:
+
+```text
+['cada', 'cinco', 'dio', 'dos', 'fecha', 'figura', 'idea', 'lista', 'local', 'lugar']
+```
+
+Se repitió el experimento con `AvgPooledITEncoder`, CTC `0.1`, `max_epochs=15`, `max_classes=100`, decoder convolucional y variando el adapter temporal. Las métricas son las de fase 3:
+
+| Adapter | Letras | Phones | MSWC seen | MSWC heldout |
+| :-- | :--: | :--: | :--: | :--: |
+| convolucional | **29.03 / 51.61 / 61.29** | **19 / 36 / 44** | **16.67** / 27.78 / **37.78** | 30 / **70** / 70 |
+| recurrente | 22.58 / 45.16 / **64.52** | 17 / 30 / 42 | 14.44 / 28.89 / 35.56 | 30 / 60 / 70 |
+| transformer | 22.58 / **51.61** / **64.52** | **19** / 35 / 43 | 14.44 / **31.11** / 34.44 | 30 / 60 / 70 |
+
+La comparación confirma que el adapter convolucional sigue siendo el candidato más balanceado: gana en words seen top-1/top-5, empata o gana en phones, y mantiene el mismo heldout top-1 que los otros adapters. El transformer ya no queda descartado por completo porque alcanza buen top-k en words seen, pero no ofrece una mejora que justifique la complejidad adicional.
+
+La métrica heldout todavía debe leerse con cuidado. Actualmente los ejemplos heldout se rankean contra prototipos de las 10 clases heldout. Por lo tanto, el azar ya es alto:
+
+```text
+Top-1 chance: 10%
+Top-3 chance: 30%
+Top-5 chance: 50%
+```
+
+Esto explica que en fase 1 aparezcan valores como `10 / 30 / 50` sin aprendizaje real de words. El resultado de fase 3 (`30 / 70 / 70`) está por encima de ese azar, pero no es todavía una prueba fuerte de generalización composicional. El próximo ajuste metodológico debería evaluar las palabras heldout contra prototipos de todas las words seleccionadas (`90 seen + 10 heldout`), para que la métrica mida si una palabra nunca entrenada queda más cerca de su propio prototipo que de las palabras vistas.
+
 ## Configuración del modelo convolucional
 
 La fase 1 entrena con letras renderizadas aisladas emparejadas con sus representaciones de audio, usando posición aleatoria del texto pero sin aumentación de escena acústica.

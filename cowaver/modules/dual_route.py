@@ -2,21 +2,20 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch.optim import Optimizer, AdamW
-from torch.optim.lr_scheduler import LRScheduler, StepLR
+from torch.optim.lr_scheduler import LRScheduler, LinearLR
 from .adapters import build_temporal_adapter
 from .common import CTCHead, unpack_batch
 from .decoders import build_decoder
 from .encoders import AvgPooledITEncoder
-from ..models import DataModule, TestResults, TrainableModule
+from ..models import DataModule, TestResults, TrainProgramme, TrainableModule
 
 
 class CoWaverDualRoute(TrainableModule):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, height_bands: int = 4, num_tasks: int = 2, adapter: str = "convolutional", decoder: str = "convolutional", *, ctc_vocab_size: int, ctc_weight: float = 0.0):
+    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, num_tasks: int = 2, adapter: str = "convolutional", decoder: str = "convolutional", *, ctc_vocab_size: int, ctc_weight: float = 0.0):
         adapter_suffix = "" if adapter == "convolutional" else f"_ad{adapter.replace('-', '_')}"
         decoder_suffix = "" if decoder == "convolutional" else f"_dc{decoder.replace('-', '_')}"
-        height_suffix = f"_hb{height_bands}"
         ctc_suffix = "" if ctc_weight == 0 else f"_ctc{ctc_weight:g}"
-        super().__init__(name=f"cowaver_dual_route_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{height_suffix}{adapter_suffix}{decoder_suffix}{ctc_suffix}")
+        super().__init__(name=f"cowaver_dual_route_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}{adapter_suffix}{decoder_suffix}{ctc_suffix}")
         self.mel_bins = mel_bins
         self.num_tasks = num_tasks
         self.visual_encoder = AvgPooledITEncoder(
@@ -26,7 +25,6 @@ class CoWaverDualRoute(TrainableModule):
             adapter,
             input_dim=latent_dim,
             latent_dim=latent_dim,
-            width_steps=width_steps,
         )
         self.decoders = torch.nn.ModuleList([
             build_decoder(
@@ -100,23 +98,21 @@ class CoWaverDualRoute(TrainableModule):
         x, _, _, task_ids, _, _ = unpack_batch(batch)
         return self(x, task_ids=task_ids)
 
-    def optimizer(self, phase: int) -> torch.optim.Optimizer:
-        if phase == 1:
-            lrs = (3e-5, 3e-4, 1e-3)
-        elif phase == 2:
-            lrs = (3e-6, 1e-4, 3e-4)
-        else:
-            lrs = (3e-6, 5e-5, 1e-4)
-        param_groups = [
-                {"params": self.visual_encoder.parameters(), "lr": lrs[0]},
-                {"params": self.adapter.parameters(), "lr": lrs[1]},
-                {"params": self.decoders.parameters(), "lr": lrs[2]},
-        ]
-        param_groups.append({"params": self.ctc_head.parameters(), "lr": lrs[1]})
+    def optimizer(self, phase: int, programme: TrainProgramme) -> torch.optim.Optimizer:
         return AdamW(
-            param_groups,
+            self.parameters(),
+            lr=programme.epsilon_zero,
             weight_decay=1e-4
         )
 
-    def scheduler(self, optimizer: Optimizer, phase: int) -> LRScheduler:
-        return StepLR(optimizer, step_size=10, gamma=0.5)
+    def scheduler(self, optimizer: Optimizer, phase: int, programme: TrainProgramme) -> LRScheduler:
+        start_epoch = programme.epochs_before_phase(phase)
+        for group in optimizer.param_groups:
+            group.setdefault("initial_lr", group["lr"])
+        return LinearLR(
+            optimizer,
+            start_factor=1.0,
+            end_factor=programme.end_factor,
+            total_iters=programme.decay_epochs(),
+            last_epoch=start_epoch - 1,
+        )

@@ -15,7 +15,7 @@ from typing import Any, Callable
 from torchvision.transforms import ToTensor
 from torchaudio.transforms import MelSpectrogram
 from .checkpoints import imprimir_encabezado, guardar_checkpoint
-from .models import DataModule, TestResults, TrainHistory, TrainableModule
+from .models import DataModule, TestResults, TrainHistory, TrainProgramme, TrainableModule
 
 AUDIO_SAMPLE_RATE = 16_000
 FONT_PATH = font_manager.findfont("DejaVu Sans Mono")
@@ -335,14 +335,15 @@ def make_image(word: str, x_stride: float = 0.5, y_stride: float = 0.5):
     x = ToTensor()(img)
     return x
 
-def entrenar_red(net: TrainableModule, data: DataModule, num_epochs: int, phase: int = 1, dispositivo: device | None = None, checkpoints_folder: Path | None = None) -> TrainHistory:
+def entrenar_red(net: TrainableModule, data: DataModule, programme: TrainProgramme, phase: int = 1, dispositivo: device | None = None, checkpoints_folder: Path | None = None) -> TrainHistory:
     if dispositivo is None:
         dispositivo = encontrar_dispositivo(silent=True)
     net = mover_a_dispositivo(net, dispositivo)
 
-    optimizer = net.optimizer(phase)
+    optimizer = net.optimizer(phase, programme)
 
-    scheduler = net.scheduler(optimizer, phase)
+    scheduler = net.scheduler(optimizer, phase, programme)
+    num_epochs = programme.epochs_for_phase(phase)
 
     train_loader = data.train_loader()
     val_loader = data.val_loader()
@@ -380,7 +381,7 @@ def entrenar_red(net: TrainableModule, data: DataModule, num_epochs: int, phase:
         print(f"Epoch {epoch+1}/{num_epochs} | " f"train_loss={epoch_train_loss:.4f} | val_loss={epoch_val_loss:.4f}")
 
     if checkpoints_folder is not None:
-        guardar_checkpoint(net, train_history, phase, checkpoints_folder)
+        guardar_checkpoint(net, train_history, programme, phase, checkpoints_folder)
 
     return train_history
 

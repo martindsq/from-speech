@@ -8,16 +8,15 @@ from .adapters import build_temporal_adapter
 from .common import CTCHead, unpack_batch
 from .decoders import build_decoder
 from .encoders import AvgPooledITEncoder
-from ..models import DataModule, TestResults, TrainableModule
+from ..models import DataModule, TestResults, TrainProgramme, TrainableModule
 
 
 class CoWaverUnconditioned(TrainableModule):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, width_steps: int = 24, height_bands: int = 4, adapter: str = "convolutional", decoder: str = "convolutional", name_prefix: str = "cowaver_unconditioned", *, ctc_vocab_size: int, ctc_weight: float = 0.0):
+    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, seq_len: int = 49, mel_bins: int = 40, adapter: str = "convolutional", decoder: str = "convolutional", name_prefix: str = "cowaver_unconditioned", *, ctc_vocab_size: int, ctc_weight: float = 0.0):
         adapter_suffix = "" if adapter == "convolutional" else f"_ad{adapter.replace('-', '_')}"
         decoder_suffix = "" if decoder == "convolutional" else f"_dc{decoder.replace('-', '_')}"
-        height_suffix = f"_hb{height_bands}"
         ctc_suffix = "" if ctc_weight == 0 else f"_ctc{ctc_weight:g}"
-        super().__init__(name=f"{name_prefix}_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}_ws{width_steps}{height_suffix}{adapter_suffix}{decoder_suffix}{ctc_suffix}")
+        super().__init__(name=f"{name_prefix}_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}{adapter_suffix}{decoder_suffix}{ctc_suffix}")
         self.mel_bins = mel_bins
         self.visual_encoder = AvgPooledITEncoder(
             feature_dim=latent_dim,
@@ -26,7 +25,6 @@ class CoWaverUnconditioned(TrainableModule):
             adapter,
             input_dim=latent_dim,
             latent_dim=latent_dim,
-            width_steps=width_steps,
         )
         self.decoder = build_decoder(
             decoder,
@@ -98,7 +96,7 @@ class CoWaverUnconditioned(TrainableModule):
         x, _, _, _, _, _ = unpack_batch(batch)
         return self(x)
 
-    def optimizer(self, phase: int) -> torch.optim.Optimizer:
+    def optimizer(self, phase: int, programme: TrainProgramme) -> torch.optim.Optimizer:
         if phase == 1:
             lrs = (3e-5, 3e-4, 1e-3)
         elif phase == 2:
@@ -116,5 +114,5 @@ class CoWaverUnconditioned(TrainableModule):
             weight_decay=1e-4
         )
 
-    def scheduler(self, optimizer: Optimizer, phase: int) -> LRScheduler:
+    def scheduler(self, optimizer: Optimizer, phase: int, programme: TrainProgramme) -> LRScheduler:
         return StepLR(optimizer, step_size=10, gamma=0.5)
