@@ -5,6 +5,18 @@ from .models import DataModule
 from .datasets import ImageMelDataset, RelabeledDataset, TinySpeakDataset
 from .transforms import RandomPosition
 
+
+def collate_image_mel_ctc(batch):
+    prefix = [item[:-1] for item in batch]
+    ctc_targets = [item[-1] for item in batch]
+    collated = torch.utils.data.default_collate(prefix)
+    target_lengths = torch.tensor(
+        [target.numel() for target in ctc_targets],
+        dtype=torch.long,
+    )
+    return (*collated, torch.cat(ctc_targets), target_lengths)
+
+
 class TinyMel(DataModule):
     """Build image/mel loaders for a TinySpeak-style dataset.
 
@@ -109,14 +121,7 @@ class TinyMel(DataModule):
         return batch[1]
 
     def collate_fn(self, batch):
-        prefix = [item[:-1] for item in batch]
-        ctc_targets = [item[-1] for item in batch]
-        collated = torch.utils.data.default_collate(prefix)
-        target_lengths = torch.tensor(
-            [target.numel() for target in ctc_targets],
-            dtype=torch.long,
-        )
-        return (*collated, torch.cat(ctc_targets), target_lengths)
+        return collate_image_mel_ctc(batch)
 
     def mel_prototypes(self, dispositivo=None):
         if self._mel_prototypes is None:
@@ -216,6 +221,9 @@ class MixedTinyMel(DataModule):
 
     def labels_from_batch(self, batch):
         return batch[1]
+
+    def collate_fn(self, batch):
+        return collate_image_mel_ctc(batch)
 
     def train_loader(self) -> DataLoader:
         if self.proportions is None:
