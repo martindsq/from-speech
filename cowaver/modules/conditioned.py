@@ -68,7 +68,7 @@ class CoWaverConditioned(TrainableModule):
         mel_loss = F.l1_loss(y_hat, y)
         if self.ctc_weight == 0:
             return mel_loss
-        ctc_loss = self.ctc_head.training_loss(z, ctc_targets, ctc_lengths)
+        ctc_loss = self.ctc_head.training_loss(h, ctc_targets, ctc_lengths)
         return mel_loss + self.ctc_weight * ctc_loss
 
     def test_step(self, data: DataModule, batch: tuple) -> TestResults:
