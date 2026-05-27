@@ -146,6 +146,57 @@ class TinyMel(DataModule):
         return self._mel_prototypes.to(dispositivo)
 
 
+class FilteredTestTinyMel(DataModule):
+    """Evaluate a subset of classes against prototypes from the full source."""
+    def __init__(self, source: TinyMel, test_classes: list[str]):
+        class_to_label = {
+            class_name: label
+            for label, class_name in source.classes.items()
+        }
+        missing = [
+            class_name for class_name in test_classes
+            if class_name not in class_to_label
+        ]
+        if missing:
+            raise ValueError(f"test classes not found in source: {missing}")
+
+        test_labels = {
+            class_to_label[class_name]
+            for class_name in test_classes
+        }
+        indices = [
+            index
+            for index, (_, label) in enumerate(source.test_set.base_dataset.samples)
+            if label in test_labels
+        ]
+        if len(indices) == 0:
+            raise ValueError("filtered test set is empty.")
+
+        self.source = source
+        super().__init__(
+            source.batch_size,
+            source.train_set,
+            source.val_set,
+            torch.utils.data.Subset(source.test_set, indices),
+        )
+
+    @property
+    def classes(self):
+        return self.source.classes
+
+    def elements_from_batch(self, batch):
+        return self.source.elements_from_batch(batch)
+
+    def labels_from_batch(self, batch):
+        return self.source.labels_from_batch(batch)
+
+    def collate_fn(self, batch):
+        return self.source.collate_fn(batch)
+
+    def mel_prototypes(self, dispositivo=None):
+        return self.source.mel_prototypes(dispositivo)
+
+
 class MixedTinyMel(DataModule):
     """Compose multiple TinyMel data modules.
 
