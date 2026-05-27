@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from torch.optim import Optimizer, AdamW
-from torch.optim.lr_scheduler import LRScheduler, StepLR
+from torch.optim.lr_scheduler import LRScheduler, LinearLR
 from .adapters import build_temporal_adapter
 from .common import CTCHead, unpack_batch
 from .decoders import build_decoder
@@ -68,7 +68,7 @@ class CoWaverConditioned(TrainableModule):
         mel_loss = F.l1_loss(y_hat, y)
         if self.ctc_weight == 0:
             return mel_loss
-        ctc_loss = self.ctc_head.training_loss(h, ctc_targets, ctc_lengths)
+        ctc_loss = self.ctc_head.training_loss(z, ctc_targets, ctc_lengths)
         return mel_loss + self.ctc_weight * ctc_loss
 
     def test_step(self, data: DataModule, batch: tuple) -> TestResults:
@@ -96,23 +96,20 @@ class CoWaverConditioned(TrainableModule):
         return self(x, task_ids=task_ids)
 
     def optimizer(self, phase: int, programme: TrainProgramme) -> torch.optim.Optimizer:
-        if phase == 1:
-            lrs = (3e-5, 3e-4, 1e-3)
-        elif phase == 2:
-            lrs = (3e-6, 1e-4, 3e-4)
-        else:
-            lrs = (3e-6, 5e-5, 1e-4)
-        param_groups = [
-                {"params": self.visual_encoder.parameters(), "lr": lrs[0]},
-                {"params": self.adapter.parameters(), "lr": lrs[1]},
-                {"params": self.task_embedding.parameters(), "lr": lrs[1]},
-                {"params": self.decoder.parameters(), "lr": lrs[2]},
-        ]
-        param_groups.append({"params": self.ctc_head.parameters(), "lr": lrs[1]})
         return AdamW(
-            param_groups,
+            self.parameters(),
+            lr=programme.epsilon_zero,
             weight_decay=1e-4
         )
 
     def scheduler(self, optimizer: Optimizer, phase: int, programme: TrainProgramme) -> LRScheduler:
-        return StepLR(optimizer, step_size=10, gamma=0.5)
+        start_epoch = programme.epochs_before_phase(phase)
+        for group in optimizer.param_groups:
+            group.setdefault("initial_lr", group["lr"])
+        return LinearLR(
+            optimizer,
+            start_factor=1.0,
+            end_factor=programme.end_factor,
+            total_iters=programme.decay_epochs(),
+            last_epoch=start_epoch - 1,
+        )
