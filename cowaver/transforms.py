@@ -1,5 +1,5 @@
 import torchaudio
-from torch import Tensor, nn, empty, full, randn, randn_like
+from torch import Tensor, nn, empty, full, randn_like
 from torch.nn import functional as F
 from .utils import AUDIO_SAMPLE_RATE
 
@@ -8,24 +8,35 @@ class RandomPosition(nn.Module):
 
     Parameters
     ----------
-    mean:
-        Mean normalized position for both axes.
-    std:
-        Standard deviation for both axes. Use `0.0` for deterministic centered
-        text when `mean=0.5`.
+    center:
+        Center normalized position for both axes.
+    spread:
+        Maximum distance from center for randomized axes.
+    axis:
+        Axis to randomize: `"x"`, `"y"`, or `"xy"`.
     """
 
-    def __init__(self, mean=0.5, std=0.1):
+    def __init__(self, center=0.5, spread=0.5, axis: str = "xy"):
         super().__init__()
-        self.mean = mean
-        self.std = std
+        if axis not in ("x", "y", "xy"):
+            raise ValueError('axis must be "x", "y", or "xy".')
+        if spread < 0:
+            raise ValueError("spread must be non-negative.")
+        self.center = center
+        self.spread = spread
+        self.axis = axis
+
+    def _sample(self):
+        value = empty(1).uniform_(
+            self.center - self.spread,
+            self.center + self.spread,
+        ).item()
+        return max(0.0, min(1.0, value))
 
     def forward(self):
-        x = randn(1).item() * self.std + self.mean
-        y = randn(1).item() * self.std + self.mean
-
-        x = max(0.0, min(1.0, x))
-        y = max(0.0, min(1.0, y))
+        center = max(0.0, min(1.0, self.center))
+        x = self._sample() if "x" in self.axis else center
+        y = self._sample() if "y" in self.axis else center
 
         return x, y
 

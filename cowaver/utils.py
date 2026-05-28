@@ -44,6 +44,27 @@ def listar_clases(carpeta: Path) -> list[str]:
         if not path.name.startswith(".") and path.is_dir()
     ]
 
+def seleccionar_clases(base_path: Path, max_classes: int, seed: int = 42) -> list[str]:
+    """Selecciona un subconjunto reproducible de clases y lo devuelve ordenado."""
+    classes = listar_clases(base_path / "train")
+    generator = torch.Generator().manual_seed(seed)
+    permutation = torch.randperm(len(classes), generator=generator).tolist()
+    return sorted(classes[index] for index in permutation[:max_classes])
+
+def separar_clases(classes: list[str], fraction: float = 0.1, seed: int = 42):
+    """Separa clases de train/test de forma reproducible."""
+    if len(classes) < 2:
+        return classes, []
+
+    generator = torch.Generator().manual_seed(seed)
+    permutation = torch.randperm(len(classes), generator=generator).tolist()
+    shuffled = [classes[index] for index in permutation]
+    test_size = round(len(classes) * fraction)
+    test_size = min(max(test_size, 1), len(classes) - 1)
+    test = sorted(shuffled[:test_size])
+    train = sorted(shuffled[test_size:])
+    return train, test
+
 def construir_vocabulario_caracteres(datasets: list[tuple[Path, list[str] | None]]) -> dict[str, int]:
     caracteres = set()
     for base_dir, classes in datasets:

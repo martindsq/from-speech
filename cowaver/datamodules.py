@@ -146,23 +146,23 @@ class TinyMel(DataModule):
         return self._mel_prototypes.to(dispositivo)
 
 
-class FilteredTestTinyMel(DataModule):
+class FilteredTinyMel(DataModule):
     """Evaluate a subset of classes against prototypes from the full source."""
-    def __init__(self, source: TinyMel, test_classes: list[str]):
+    def __init__(self, source: TinyMel, classes: list[str]):
         class_to_label = {
             class_name: label
             for label, class_name in source.classes.items()
         }
         missing = [
-            class_name for class_name in test_classes
+            class_name for class_name in classes
             if class_name not in class_to_label
         ]
         if missing:
-            raise ValueError(f"test classes not found in source: {missing}")
+            raise ValueError(f"filtered classes not found in source: {missing}")
 
         test_labels = {
             class_to_label[class_name]
-            for class_name in test_classes
+            for class_name in classes
         }
         indices = [
             index

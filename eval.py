@@ -1,9 +1,8 @@
 import argparse
-import torch
 from pathlib import Path
-from cowaver.datamodules import FilteredTestTinyMel, TinyMel
+from cowaver.datamodules import FilteredTinyMel, TinyMel
 from cowaver.modules import DECODER_REGISTRY, MODEL_REGISTRY, TEMPORAL_ADAPTER_REGISTRY, CoWaver, build_model
-from cowaver.transforms import RandomAlign, RandomPosition, RandomScene
+from cowaver.transforms import RandomAlign, RandomScene
 from cowaver.utils import (
     descomprimir_archivo,
     encontrar_dispositivo,
@@ -11,6 +10,8 @@ from cowaver.utils import (
     borrar_carpeta,
     construir_vocabulario_caracteres,
     listar_clases,
+    seleccionar_clases,
+    separar_clases,
 )
 from cowaver.checkpoints import fases_disponibles, cargar_checkpoint
 
@@ -42,8 +43,8 @@ parser.add_argument("--seq-len", type=int, default=49)
 parser.add_argument("--max-classes", type=int, default=200)
 parser.add_argument("--ctc-weight", type=float, default=0.0)
 args = parser.parse_args()
-if args.max_classes <= 0:
-    parser.error("--max-classes must be positive")
+if args.max_classes < 2:
+    parser.error("--max-classes must be at least 2")
 if args.ctc_weight < 0:
     parser.error("--ctc-weight must be non-negative")
 data_path = Path(args.data)
@@ -73,32 +74,16 @@ tiny_phones_path = descomprimir_archivo(tiny_phones_xz_path, data_path)
 tiny_mswc_path = descomprimir_archivo(tiny_mswc_xz_path, data_path)
 dispositivo = encontrar_dispositivo()
 
-def seleccionar_clases(base_path: Path, max_classes: int | None = None) -> list[str]:
-    classes = listar_clases(base_path / "train")
-    if max_classes is not None:
-        classes = classes[:max_classes]
-    return classes
-
-def separar_clases_test(classes: list[str], fraction: float = 0.1, seed: int = 42):
-    if len(classes) < 2:
-        return classes, []
-
-    generator = torch.Generator().manual_seed(seed)
-    permutation = torch.randperm(len(classes), generator=generator).tolist()
-    shuffled = [classes[index] for index in permutation]
-    test_size = round(len(classes) * fraction)
-    test_size = min(max(test_size, 1), len(classes) - 1)
-    test = sorted(shuffled[:test_size])
-    train = sorted(shuffled[test_size:])
-    return train, test
-
-letter_classes = seleccionar_clases(tiny_letter_path)
-phone_classes = seleccionar_clases(tiny_phones_path, args.max_classes)
-word_classes = seleccionar_clases(tiny_mswc_path, args.max_classes)
-word_train_classes, word_test_classes = separar_clases_test(word_classes)
+letter_classes = listar_clases(tiny_letter_path / "train")
+phone_classes = seleccionar_clases(tiny_phones_path, args.max_classes, seed=42)
+word_classes = seleccionar_clases(tiny_mswc_path, args.max_classes, seed=42)
+phone_train_classes, phone_test_classes = separar_clases(phone_classes)
+word_train_classes, word_test_classes = separar_clases(word_classes)
 
 print("--letter-classes", len(letter_classes))
-print("--phone-classes", len(phone_classes))
+print("--phone-train-classes", len(phone_train_classes))
+print("--phone-test-classes", len(phone_test_classes))
+print("--phone-test", phone_test_classes)
 print("--word-train-classes", len(word_train_classes))
 print("--word-test-classes", len(word_test_classes))
 print("--word-test", word_test_classes)
@@ -111,56 +96,66 @@ char_to_idx = construir_vocabulario_caracteres([
 ctc_vocab_size = len(char_to_idx) + 1
 print("--ctc-vocab-size", ctc_vocab_size)
 
-def eval_cowaver(cowaver: CoWaver, letters: TinyMel, phones: TinyMel, words_train: TinyMel, words_test: TinyMel | None = None):
+def eval_cowaver(
+    cowaver: CoWaver,
+    letters: TinyMel,
+    phones_train: TinyMel,
+    words_train: TinyMel,
+    phones_test: TinyMel,
+    words_test: TinyMel,
+):
     print(f"Evaluando en {tiny_letter_path.stem}", end="... ")
     print(evaluar_red(cowaver, letters))
-    print(f"Evaluando en {tiny_phones_path.stem}", end="... ")
-    print(evaluar_red(cowaver, phones))
+    print(f"Evaluando en {tiny_phones_path.stem} train", end="... ")
+    print(evaluar_red(cowaver, phones_train))
+    print(f"Evaluando en {tiny_phones_path.stem} test", end="... ")
+    print(evaluar_red(cowaver, phones_test))
     print(f"Evaluando en {tiny_mswc_path.stem} train", end="... ")
     print(evaluar_red(cowaver, words_train))
-    if words_test is not None:
-        print(f"Evaluando en {tiny_mswc_path.stem} test", end="... ")
-        print(evaluar_red(cowaver, words_test))
+    print(f"Evaluando en {tiny_mswc_path.stem} test", end="... ")
+    print(evaluar_red(cowaver, words_test))
 
 def load_cowaver(cowaver: CoWaver):
     letters = TinyMel(
         base_dir=tiny_letter_path,
         char_to_idx=char_to_idx,
         mel_bins=cowaver.mel_bins,
-        position=RandomPosition(mean=0.5, std=0.1),
         task_id=1,
         classes=letter_classes,
     )
-    phones = TinyMel(
+    phones_train = TinyMel(
         base_dir=tiny_phones_path,
         char_to_idx=char_to_idx,
         mel_bins=cowaver.mel_bins,
-        position=RandomPosition(mean=0.5, std=0.1),
+        task_id=1,
+        classes=phone_train_classes,
+    )
+    phones_all = TinyMel(
+        base_dir=tiny_phones_path,
+        char_to_idx=char_to_idx,
+        mel_bins=cowaver.mel_bins,
         task_id=1,
         classes=phone_classes,
     )
+    phones_test = FilteredTinyMel(phones_all, phone_test_classes)
     words_train = TinyMel(
         base_dir=tiny_mswc_path,
         char_to_idx=char_to_idx,
         mel_bins=cowaver.mel_bins,
-        position=RandomPosition(mean=0.5, std=0.1),
         task_id=2,
         classes=word_train_classes,
     )
-    words_test = None
-    if len(word_test_classes) > 0:
-        words_all = TinyMel(
-            base_dir=tiny_mswc_path,
-            char_to_idx=char_to_idx,
-            mel_bins=cowaver.mel_bins,
-            position=RandomPosition(mean=0.5, std=0.1),
-            task_id=2,
-            classes=word_classes,
-        )
-        words_test = FilteredTestTinyMel(words_all, word_test_classes)
+    words_all = TinyMel(
+        base_dir=tiny_mswc_path,
+        char_to_idx=char_to_idx,
+        mel_bins=cowaver.mel_bins,
+        task_id=2,
+        classes=word_classes,
+    )
+    words_test = FilteredTinyMel(words_all, word_test_classes)
     for i in range(3):
         cargar_checkpoint(net=cowaver, device=dispositivo, phase=i+1, folder=checkpoints_path)
-        eval_cowaver(cowaver, letters, phones, words_train, words_test)
+        eval_cowaver(cowaver, letters, phones_train, words_train, phones_test, words_test)
 
 model_kwargs = {
     "latent_dim": args.latent_dim,
