@@ -3,15 +3,17 @@
 .jupyter/
 data/
 venv/
+out/
 checkpoints/
 install.batch
 eval.batch
 train.sh
-*.out
 kalulu-phonemes.tar.xz
 tiny-letter-30.tar.xz
 tiny-mswc-200.tar.xz
 tiny-phones-200.tar.xz
+tiny-mswc-500.tar.xz
+tiny-phones-500.tar.xz
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -31,9 +31,9 @@ ADAPTER=${3:?Missing adapter}
 LATENT_DIM=${4:-256}
 HIDDEN_SIZE=${5:-256}
 MAX_CLASSES=${6:-200}
-THETA_MAX=${7:-90}
+THETA_MAX=${7:-60}
 EPSILON_ZERO=${8:-3e-4}
-THETA=${9:-60}
+THETA=${9:-45}
 EPSILON_THETA=${10:-3e-5}
 
 python train.py \

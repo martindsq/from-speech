@@ -65,8 +65,8 @@ print("--max-classes", args.max_classes)
 print("--ctc-weight", args.ctc_weight)
 
 tiny_letter_xz_path = Path("tiny-letter-30.tar.xz")
-tiny_phones_xz_path = Path("tiny-phones-200.tar.xz")
-tiny_mswc_xz_path = Path("tiny-mswc-200.tar.xz")
+tiny_phones_xz_path = Path("tiny-phones-500.tar.xz")
+tiny_mswc_xz_path = Path("tiny-mswc-500.tar.xz")
 
 tiny_letter_path = descomprimir_archivo(tiny_letter_xz_path, data_path)
 tiny_phones_path = descomprimir_archivo(tiny_phones_xz_path, data_path)

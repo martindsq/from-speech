@@ -221,7 +221,25 @@ El schedule `3e-4`, `theta=45`, `epsilon_theta=3e-5` queda como baseline princip
 
 La lectura conceptual cambió con la métrica dura: la aparente mejora previa en heldout era demasiado optimista porque rankeaba solo contra las 10 clases reservadas. Con test contra las 100 clases, `MSWC test` queda cerca del azar. El modelo aprende palabras entrenadas y conserva información útil para letras/phones, pero todavía no aprendió una función robusta de composición de palabra visual nueva a prototipo acústico.
 
-El siguiente experimento mueve la pérdida CTC desde `h` hacia `z`: en vez de supervisar directamente la salida del encoder visual, la presión ortográfica se aplica sobre la representación que efectivamente alimenta al decoder Mel. La hipótesis es que esto puede obligar al camino acústico a preservar estructura de caracteres y no solo identidad de palabra entrenada.
+Se probó luego aumentar la diversidad léxica a `max_classes=200`. El split pasa a ser 180 clases train y 20 clases test. En este régimen, el azar en `words test` baja aún más:
+
+```text
+Top-1 chance: 0.5%
+Top-3 chance: 1.5%
+Top-5 chance: 2.5%
+```
+
+También se comparó dónde aplicar la pérdida CTC: sobre `h`, la salida del encoder visual, o sobre `z`, la representación después del adapter que alimenta al decoder. Las métricas son fase 3, con `3e-4`, `theta=45`, `theta_max=45`, CTC `0.1`, decoder y adapter convolucionales:
+
+| Clases | CTC | Letras | Phones | MSWC train | MSWC test |
+| :--: | :--: | :--: | :--: | :--: | :--: |
+| 100 | `z` | 22.58 / 51.61 / 61.29 | **23 / 41 / 48** | 14.44 / **28.89 / 36.67** | 0 / 10 / 20 |
+| 200 | `z` | **25.81** / 48.39 / **74.19** | **9.5 / 20.5 / 25.5** | 14.44 / 21.11 / 25.00 | 10 / 15 / 15 |
+| 200 | `h` | 19.35 / 48.39 / 70.97 | 9.0 / 18.5 / 24.5 | **15.56** / 21.11 / **27.22** | **15 / 20 / 35** |
+
+Este es el primer resultado fuerte de generalización composicional: con 200 clases y CTC sobre `h`, `MSWC test` queda claramente por encima del azar (`15 / 20 / 35` contra `0.5 / 1.5 / 2.5`). Además, el control `h` vs `z` favorece supervisar la representación visual. Aunque `z` conserva algo mejor letras/phones top-k, CTC sobre `h` generaliza mejor a palabras reservadas y es más interpretable neurobiológicamente: la presión ortográfica se aplica sobre una representación visual/IT-like antes de la transformación hacia el espacio acústico.
+
+Por ahora, el baseline principal pasa a ser `AvgPooledITEncoder`, adapter y decoder convolucionales, CTC `0.1` sobre `h`, `max_classes=200`, `theta_max=45`, `epsilon_zero=3e-4`, `theta=45` y `epsilon_theta=3e-5`.
 
 ## Configuración del modelo convolucional
 
