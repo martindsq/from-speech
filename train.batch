@@ -4,7 +4,7 @@
 #SBATCH --time=1:00:00
 #SBATCH --partition=normal
 #SBATCH --qos=gpu
-#SBATCH --output=%x.out
+#SBATCH --output=out/%x.out
 #SBATCH --gres=gpu:1
 #SBATCH --mail-type=ALL
 
@@ -35,6 +35,16 @@ THETA_MAX=${7:-60}
 EPSILON_ZERO=${8:-3e-4}
 THETA=${9:-45}
 EPSILON_THETA=${10:-3e-5}
+CTC_WEIGHT=${11:-0.1}
+PHASE1_LETTERS=${12:-1}
+PHASE1_PHONES=${13:-0}
+PHASE1_WORDS=${14:-0}
+PHASE2_LETTERS=${15:-0.20}
+PHASE2_PHONES=${16:-0.60}
+PHASE2_WORDS=${17:-0.20}
+PHASE3_LETTERS=${18:-0.05}
+PHASE3_PHONES=${19:-0.10}
+PHASE3_WORDS=${20:-0.85}
 
 python train.py \
   --data /scratch/$USER/${SLURM_JOB_ID:-$(date +%Y%m%d%H%M%S)} \
@@ -48,7 +58,7 @@ python train.py \
   --epsilon-zero "$EPSILON_ZERO" \
   --theta "$THETA" \
   --epsilon-theta "$EPSILON_THETA" \
-  --phase1-proportions 1 0 0 \
-  --phase2-proportions 0.20 0.60 0.20 \
-  --phase3-proportions 0.05 0.10 0.85 \
-  --ctc-weight 0.1
+  --phase1-proportions "$PHASE1_LETTERS" "$PHASE1_PHONES" "$PHASE1_WORDS" \
+  --phase2-proportions "$PHASE2_LETTERS" "$PHASE2_PHONES" "$PHASE2_WORDS" \
+  --phase3-proportions "$PHASE3_LETTERS" "$PHASE3_PHONES" "$PHASE3_WORDS" \
+  --ctc-weight "$CTC_WEIGHT"
