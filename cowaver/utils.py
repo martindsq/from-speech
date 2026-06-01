@@ -39,20 +39,66 @@ def normalizar_texto(texto: str) -> str:
     return texto.translate(REEMPLAZOS_ACENTOS)
 
 def listar_clases(carpeta: Path) -> list[str]:
-    return [
+    """Lista las clases contenidas en una carpeta.
+
+    Parameters
+    ----------
+    carpeta: Path
+        Carpeta que contiene una subcarpeta por cada clase.
+
+    Returns
+    -------
+    clases: list[str]
+        Lista ordenada con los nombres de las clases encontradas.
+    """
+    clases = [
         path.name for path in sorted(carpeta.iterdir())
         if not path.name.startswith(".") and path.is_dir()
     ]
+    return clases
 
 def seleccionar_clases(base_path: Path, max_classes: int, seed: int = 42) -> list[str]:
-    """Selecciona un subconjunto reproducible de clases y lo devuelve ordenado."""
+    """Selecciona un subconjunto reproducible de clases y lo devuelve ordenado.
+
+    Parameters
+    ----------
+    base_path: Path
+        Carpeta base del dataset.
+    max_classes: int
+        Numero maximo de clases a seleccionar.
+    seed: int
+        Semilla para seleccionar las clases de forma reproducible.
+
+    Returns
+    -------
+    clases: list[str]
+        Lista ordenada con las clases seleccionadas.
+    """
     classes = listar_clases(base_path / "train")
     generator = torch.Generator().manual_seed(seed)
     permutation = torch.randperm(len(classes), generator=generator).tolist()
-    return sorted(classes[index] for index in permutation[:max_classes])
+    clases = sorted(classes[index] for index in permutation[:max_classes])
+    return clases
 
 def separar_clases(classes: list[str], fraction: float = 0.1, seed: int = 42):
-    """Separa clases de train/test de forma reproducible."""
+    """Separa clases de train/test de forma reproducible.
+
+    Parameters
+    ----------
+    classes: list[str]
+        Lista de clases a separar.
+    fraction: float
+        Fraccion de clases a usar para test.
+    seed: int
+        Semilla para separar las clases de forma reproducible.
+
+    Returns
+    -------
+    train: list[str]
+        Lista ordenada con las clases de train.
+    test: list[str]
+        Lista ordenada con las clases de test.
+    """
     if len(classes) < 2:
         return classes, []
 
@@ -66,6 +112,19 @@ def separar_clases(classes: list[str], fraction: float = 0.1, seed: int = 42):
     return train, test
 
 def construir_vocabulario_caracteres(datasets: list[tuple[Path, list[str] | None]]) -> dict[str, int]:
+    """Construye un vocabulario de caracteres a partir de clases de datasets.
+
+    Parameters
+    ----------
+    datasets: list[tuple[Path, list[str] | None]]
+        Lista de pares con la carpeta base de un dataset y las clases a usar.
+        Si las clases son None, se usan todas las clases de train y test.
+
+    Returns
+    -------
+    vocabulario: dict[str, int]
+        Diccionario que asigna un indice a cada caracter normalizado.
+    """
     caracteres = set()
     for base_dir, classes in datasets:
         if classes is None:
@@ -75,10 +134,11 @@ def construir_vocabulario_caracteres(datasets: list[tuple[Path, list[str] | None
         else:
             for clase in classes:
                 caracteres.update(normalizar_texto(clase))
-    return {
+    vocabulario = {
         caracter: indice + 1
         for indice, caracter in enumerate(sorted(caracteres))
     }
+    return vocabulario
 
 def encontrar_dispositivo(silent: bool = False):
     """Encuentra un dispositivo apropiado para entrenar o evaluar una red.
