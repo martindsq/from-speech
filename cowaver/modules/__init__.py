@@ -2,6 +2,8 @@ from .conditioned import CoWaverConditioned
 from .dual_route import CoWaverDualRoute
 from .adapters import (
     ConvolutionalTemporalAdapter,
+    IdentityAdapter,
+    IdentityTemporalAdapter,
     RecurrentAdapter,
     RecurrentTemporalAdapter,
     TEMPORAL_ADAPTER_REGISTRY,
@@ -17,6 +19,7 @@ from .decoders import (
     ConvolutionalMelDecoder,
     HorizontalFeaturesToMel,
     RecurrentMelDecoder,
+    Seq2SeqMelDecoder,
     TransformerMelDecoder,
     build_decoder,
 )
@@ -55,6 +58,8 @@ __all__ = [
     "Flatten",
     "HorizontalFeaturesToMel",
     "Identity",
+    "IdentityAdapter",
+    "IdentityTemporalAdapter",
     "AvgPooledITEncoder",
     "ImageToHorizontalFeatures",
     "MODEL_REGISTRY",
@@ -62,6 +67,7 @@ __all__ = [
     "RecurrentAdapter",
     "RecurrentTemporalAdapter",
     "ResidualTemporalBlock",
+    "Seq2SeqMelDecoder",
     "TEMPORAL_ADAPTER_REGISTRY",
     "TemporalAdapter",
     "TransformerAdapter",

@@ -67,11 +67,13 @@ Decoders disponibles:
 
 - `convolutional`
 - `recurrent`
+- `seq2seq`
 - `transformer`
 
 Adapters temporales disponibles:
 
 - `convolutional`
+- `identity`
 - `recurrent`
 - `transformer`
 

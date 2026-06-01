@@ -5,6 +5,18 @@ from torch import Tensor
 from .common import ResidualTemporalBlock
 
 
+class IdentityTemporalAdapter(nn.Module):
+    def __init__(self, input_dim: int = 256, latent_dim: int = 256, **_):
+        super().__init__()
+        if input_dim != latent_dim:
+            raise ValueError("IdentityTemporalAdapter requires input_dim == latent_dim.")
+
+    def forward(self, h: Tensor) -> Tensor:
+        if h.dim() == 2:
+            h = h.unsqueeze(0)
+        return h
+
+
 class ConvolutionalTemporalAdapter(nn.Module):
     def __init__(self, input_dim: int = 256, latent_dim: int = 256, **_):
         super().__init__()
@@ -74,6 +86,7 @@ class TransformerTemporalAdapter(nn.Module):
 
 TEMPORAL_ADAPTER_REGISTRY = {
     "convolutional": ConvolutionalTemporalAdapter,
+    "identity": IdentityTemporalAdapter,
     "recurrent": RecurrentTemporalAdapter,
     "transformer": TransformerTemporalAdapter,
 }
@@ -89,5 +102,6 @@ def build_temporal_adapter(adapter: str = "convolutional", **kwargs):
 
 
 TemporalAdapter = ConvolutionalTemporalAdapter
+IdentityAdapter = IdentityTemporalAdapter
 RecurrentAdapter = RecurrentTemporalAdapter
 TransformerAdapter = TransformerTemporalAdapter
