@@ -64,7 +64,7 @@ class AvgPooledITEncoder(nn.Module):
         self.cornet_z = CORnet_Z()
         self.cornet_z.module.decoder = nn.Identity()
         self.vertical_pool = nn.AdaptiveAvgPool2d((1, 7))
-        self.projector = nn.Conv1d(512, feature_dim, kernel_size=1)
+        self.projector = nn.Identity() if feature_dim == 512 else nn.Conv1d(512, feature_dim, kernel_size=1)
 
     def forward(self, x):
         """Average-pool the native CORnet IT map into a horizontal sequence.

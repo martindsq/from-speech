@@ -76,9 +76,8 @@ class Seq2SeqMelDecoder(nn.Module):
         self.seq_len = seq_len
         self.num_layers = num_layers
         self.hidden_size = hidden_size
-        self.in_proj = nn.Linear(latent_dim, hidden_size)
         self.encoder = nn.GRU(
-            input_size=hidden_size,
+            input_size=latent_dim,
             hidden_size=hidden_size // 2,
             num_layers=num_layers,
             batch_first=True,
@@ -101,8 +100,7 @@ class Seq2SeqMelDecoder(nn.Module):
     def forward(self, z: Tensor):
         if z.dim() == 2:
             z = z.unsqueeze(0)
-        x = self.in_proj(z)
-        _, hidden = self.encoder(x)
+        _, hidden = self.encoder(z)
         hidden = hidden.view(self.num_layers, 2, z.size(0), self.hidden_size // 2)
         hidden = torch.cat((hidden[:, 0], hidden[:, 1]), dim=-1)
         hidden = torch.tanh(self.init_proj(hidden))
