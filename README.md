@@ -73,7 +73,7 @@ Decoders disponibles:
 Adapters temporales disponibles:
 
 - `convolutional`
-- `identity`
+- `relu-norm`
 - `recurrent`
 - `transformer`
 

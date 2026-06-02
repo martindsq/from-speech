@@ -41,17 +41,22 @@ class ConvolutionalMelDecoder(nn.Module):
 class RecurrentMelDecoder(nn.Module):
     def __init__(self, latent_dim: int = 256, hidden_size: int = 256, mel_bins: int = 40, seq_len: int = 49, num_layers: int = 2):
         super().__init__()
+        if hidden_size % 2 != 0:
+            raise ValueError("RecurrentMelDecoder requires an even hidden_size.")
         self.seq_len = seq_len
-        self.in_proj = nn.Linear(latent_dim, hidden_size)
         self.rnn = nn.GRU(
-            input_size=hidden_size,
+            input_size=latent_dim,
             hidden_size=hidden_size // 2,
             num_layers=num_layers,
             batch_first=True,
             bidirectional=True,
             dropout=0.1 if num_layers > 1 else 0.0,
         )
-        self.out_proj = nn.Linear(hidden_size, mel_bins)
+        self.out_proj = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, mel_bins),
+        )
 
     def forward(self, z: Tensor):
         if z.dim() == 2:
@@ -63,7 +68,6 @@ class RecurrentMelDecoder(nn.Module):
             mode="linear",
             align_corners=False
         ).transpose(1, 2)
-        x = self.in_proj(x)
         x, _ = self.rnn(x)
         return self.out_proj(x).transpose(1, 2)
 

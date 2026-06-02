@@ -19,12 +19,10 @@ class CoWaverConditioned(TrainableModule):
         super().__init__(name=f"cowaver_conditioned_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}{adapter_suffix}{decoder_suffix}{ctc_suffix}")
         self.mel_bins = mel_bins
         self.num_tasks = num_tasks
-        self.visual_encoder = AvgPooledITEncoder(
-            feature_dim=latent_dim,
-        )
+        self.visual_encoder = AvgPooledITEncoder()
         self.adapter = build_temporal_adapter(
             adapter,
-            input_dim=latent_dim,
+            input_dim=self.visual_encoder.feature_dim,
             latent_dim=latent_dim,
         )
         self.task_embedding = nn.Embedding(num_tasks, latent_dim)
@@ -62,13 +60,14 @@ class CoWaverConditioned(TrainableModule):
         x, y, _, task_ids, ctc_targets, ctc_lengths = unpack_batch(batch)
         h = self.visual_encoder(x)
         z = self.adapter(h)
+        ctc_z = z
         task_ids = self._resolve_task_ids(task_ids, z.device)
         z = z + self.task_embedding(task_ids).unsqueeze(1)
         y_hat = self.decoder(z)
         mel_loss = F.l1_loss(y_hat, y)
         if self.ctc_weight == 0:
             return mel_loss
-        ctc_loss = self.ctc_head.training_loss(h, ctc_targets, ctc_lengths)
+        ctc_loss = self.ctc_head.training_loss(ctc_z, ctc_targets, ctc_lengths)
         return mel_loss + self.ctc_weight * ctc_loss
 
     def test_step(self, data: DataModule, batch: tuple) -> TestResults:

@@ -5,20 +5,23 @@ from torch import Tensor
 from .common import ResidualTemporalBlock
 
 
-class IdentityTemporalAdapter(nn.Module):
-    def __init__(self, input_dim: int = 256, latent_dim: int = 256, **_):
+class TemporalReLUNorm(nn.Module):
+    def __init__(self, input_dim: int = 512, latent_dim: int = 256, **_):
         super().__init__()
-        if input_dim != latent_dim:
-            raise ValueError("IdentityTemporalAdapter requires input_dim == latent_dim.")
+        self.proj = nn.Sequential(
+            nn.Linear(input_dim, latent_dim),
+            nn.LayerNorm(latent_dim),
+            nn.ReLU(),
+        )
 
     def forward(self, h: Tensor) -> Tensor:
         if h.dim() == 2:
             h = h.unsqueeze(0)
-        return h
+        return self.proj(h)
 
 
 class ConvolutionalTemporalAdapter(nn.Module):
-    def __init__(self, input_dim: int = 256, latent_dim: int = 256, **_):
+    def __init__(self, input_dim: int = 512, latent_dim: int = 256, **_):
         super().__init__()
         self.in_proj = nn.Conv1d(input_dim, latent_dim, kernel_size=1)
         self.blocks = nn.Sequential(
@@ -37,9 +40,11 @@ class ConvolutionalTemporalAdapter(nn.Module):
 
 
 class RecurrentTemporalAdapter(nn.Module):
-    def __init__(self, input_dim: int = 256, latent_dim: int = 256, num_layers: int = 2, **_):
+    def __init__(self, input_dim: int = 512, latent_dim: int = 256, num_layers: int = 2, **_):
         super().__init__()
-        self.in_proj = nn.Linear(input_dim, latent_dim)
+        if latent_dim % 2 != 0:
+            raise ValueError("RecurrentTemporalAdapter requires an even latent_dim.")
+        self.in_proj = nn.Conv1d(input_dim, latent_dim, kernel_size=1)
         self.rnn = nn.GRU(
             input_size=latent_dim,
             hidden_size=latent_dim // 2,
@@ -53,15 +58,15 @@ class RecurrentTemporalAdapter(nn.Module):
     def forward(self, h: Tensor) -> Tensor:
         if h.dim() == 2:
             h = h.unsqueeze(0)
-        x = self.in_proj(h)
+        x = self.in_proj(h.transpose(1, 2)).transpose(1, 2)
         x, _ = self.rnn(x)
         return self.out_proj(x)
 
 
 class TransformerTemporalAdapter(nn.Module):
-    def __init__(self, input_dim: int = 256, latent_dim: int = 256, width_steps: int = 24, num_layers: int = 3, num_heads: int = 8):
+    def __init__(self, input_dim: int = 512, latent_dim: int = 256, width_steps: int = 24, num_layers: int = 3, num_heads: int = 8):
         super().__init__()
-        self.in_proj = nn.Linear(input_dim, latent_dim)
+        self.in_proj = nn.Conv1d(input_dim, latent_dim, kernel_size=1)
         self.positional = nn.Parameter(torch.zeros(1, width_steps, latent_dim))
         layer = nn.TransformerEncoderLayer(
             d_model=latent_dim,
@@ -78,7 +83,7 @@ class TransformerTemporalAdapter(nn.Module):
     def forward(self, h: Tensor) -> Tensor:
         if h.dim() == 2:
             h = h.unsqueeze(0)
-        x = self.in_proj(h)
+        x = self.in_proj(h.transpose(1, 2)).transpose(1, 2)
         x = x + self.positional[:, :x.size(1)]
         x = self.encoder(x)
         return self.norm(x)
@@ -86,7 +91,7 @@ class TransformerTemporalAdapter(nn.Module):
 
 TEMPORAL_ADAPTER_REGISTRY = {
     "convolutional": ConvolutionalTemporalAdapter,
-    "identity": IdentityTemporalAdapter,
+    "relu-norm": TemporalReLUNorm,
     "recurrent": RecurrentTemporalAdapter,
     "transformer": TransformerTemporalAdapter,
 }
@@ -102,6 +107,5 @@ def build_temporal_adapter(adapter: str = "convolutional", **kwargs):
 
 
 TemporalAdapter = ConvolutionalTemporalAdapter
-IdentityAdapter = IdentityTemporalAdapter
 RecurrentAdapter = RecurrentTemporalAdapter
 TransformerAdapter = TransformerTemporalAdapter

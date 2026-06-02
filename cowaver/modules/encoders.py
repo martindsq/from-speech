@@ -57,14 +57,13 @@ class ImageToHorizontalFeatures(nn.Module):
 
 
 class AvgPooledITEncoder(nn.Module):
-    def __init__(self, feature_dim: int = 256):
+    def __init__(self):
         super().__init__()
 
-        self.feature_dim = feature_dim
+        self.feature_dim = 512
         self.cornet_z = CORnet_Z()
         self.cornet_z.module.decoder = nn.Identity()
         self.vertical_pool = nn.AdaptiveAvgPool2d((1, 7))
-        self.projector = nn.Identity() if feature_dim == 512 else nn.Conv1d(512, feature_dim, kernel_size=1)
 
     def forward(self, x):
         """Average-pool the native CORnet IT map into a horizontal sequence.
@@ -72,11 +71,10 @@ class AvgPooledITEncoder(nn.Module):
         Returns
         -------
         h: Tensor
-            Tensor de forma [B, 7, feature_dim].
+            Tensor de forma [B, 7, 512].
         """
         if x.dim() == 3:
             x = x.unsqueeze(0)
         features = self.cornet_z(x)
         features = self.vertical_pool(features).squeeze(2)
-        features = self.projector(features)
         return features.transpose(1, 2)

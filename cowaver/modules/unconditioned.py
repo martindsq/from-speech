@@ -18,12 +18,10 @@ class CoWaverUnconditioned(TrainableModule):
         ctc_suffix = "" if ctc_weight == 0 else f"_ctc{ctc_weight:g}"
         super().__init__(name=f"{name_prefix}_lt{latent_dim}_hs{hidden_size}_sl{seq_len}_mb{mel_bins}{adapter_suffix}{decoder_suffix}{ctc_suffix}")
         self.mel_bins = mel_bins
-        self.visual_encoder = AvgPooledITEncoder(
-            feature_dim=latent_dim,
-        )
+        self.visual_encoder = AvgPooledITEncoder()
         self.adapter = build_temporal_adapter(
             adapter,
-            input_dim=latent_dim,
+            input_dim=self.visual_encoder.feature_dim,
             latent_dim=latent_dim,
         )
         self.decoder = build_decoder(
@@ -71,7 +69,7 @@ class CoWaverUnconditioned(TrainableModule):
         mel_loss = F.l1_loss(y_hat, y)
         if self.ctc_weight == 0:
             return mel_loss
-        ctc_loss = self.ctc_head.training_loss(h, ctc_targets, ctc_lengths)
+        ctc_loss = self.ctc_head.training_loss(z, ctc_targets, ctc_lengths)
         return mel_loss + self.ctc_weight * ctc_loss
 
     def test_step(self, data: DataModule, batch: tuple) -> TestResults:

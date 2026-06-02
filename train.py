@@ -79,7 +79,7 @@ parser.add_argument(
 parser.add_argument(
     "--ctc-weight",
     type=float,
-    default=0.1,
+    default=0,
     help="Weight of the auxiliary CTC loss. Use 0 to disable it."
 )
 parser.add_argument(
@@ -117,7 +117,7 @@ parser.add_argument(
     "-p2",
     nargs=3,
     type=float,
-    default=[0.20, 0.60, 0.20],
+    default=[0.0, 0.0, 0.0],
     metavar=("LETTERS", "PHONES", "WORDS"),
     help="Sampling proportions for letters, phones, and words in phase 2.",
 )
@@ -126,7 +126,7 @@ parser.add_argument(
     "-p3",
     nargs=3,
     type=float,
-    default=[0.05, 0.10, 0.85],
+    default=[0.0, 0.0, 0.0],
     metavar=("LETTERS", "PHONES", "WORDS"),
     help="Sampling proportions for letters, phones, and words in phase 3.",
 )
