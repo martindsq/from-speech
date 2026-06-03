@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 from cowaver.datamodules import FilteredTinyMel, TinyMel
-from cowaver.modules import DECODER_REGISTRY, MODEL_REGISTRY, TEMPORAL_ADAPTER_REGISTRY, CoWaver, build_model
+from cowaver.modules import ADAPTER_REGISTRY, ARCHITECTURE_REGISTRY, DECODER_REGISTRY, CoWaver, build_model
 from cowaver.transforms import RandomAlign, RandomScene
 from cowaver.utils import (
     descomprimir_archivo,
@@ -21,7 +21,7 @@ parser.add_argument('--checkpoints', '-c', default="checkpoints")
 parser.add_argument(
     "--architecture",
     "-a",
-    choices=sorted(MODEL_REGISTRY),
+    choices=sorted(ARCHITECTURE_REGISTRY),
     default="unconditioned",
 )
 parser.add_argument(
@@ -31,7 +31,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--adapter",
-    choices=sorted(TEMPORAL_ADAPTER_REGISTRY),
+    choices=sorted(ADAPTER_REGISTRY),
     default="convolutional",
 )
 parser.add_argument("--latent-dim", type=int, default=256)

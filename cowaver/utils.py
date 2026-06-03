@@ -527,3 +527,55 @@ def pca(X: Tensor, q: int = 2):
     U, S, V = torch.pca_lowrank(X_centered, q=q)
     scores = X_centered @ V[:, :q]
     return scores
+
+def distancia_mel(mel_a: torch.Tensor, mel_b: torch.Tensor) -> torch.Tensor:
+    """Calcula una distancia DTW entre dos espectrogramas mel.
+
+    Parameters
+    ----------
+    mel_a: Tensor
+        Tensor de forma [mel_bins, seq_len], correspondiente al primer
+        espectrograma mel.
+
+    mel_b: Tensor
+        Tensor de forma [mel_bins, seq_len], correspondiente al segundo
+        espectrograma mel.
+
+    Returns
+    -------
+    distancia: Tensor
+        Tensor escalar con la distancia DTW normalizada entre ambos
+        espectrogramas.
+    """
+
+    x = mel_a.T
+    y = mel_b.T
+
+    T1, D1 = x.shape
+    T2, D2 = y.shape
+
+    if D1 != D2:
+        raise ValueError(f"Dimensiones incompatibles: {x.shape} vs {y.shape}")
+    
+    x = F.normalize(x, dim=1)
+    y = F.normalize(y, dim=1)
+    cost = 1 - x @ y.T
+
+    dtw = torch.full(
+        (T1 + 1, T2 + 1),
+        float("inf"),
+        device=mel_a.device,
+        dtype=mel_a.dtype,
+    )
+
+    dtw[0, 0] = 0.0
+
+    for i in range(1, T1 + 1):
+        for j in range(1, T2 + 1):
+            dtw[i, j] = cost[i - 1, j - 1] + torch.min(torch.stack([
+                dtw[i - 1, j],
+                dtw[i, j - 1],
+                dtw[i - 1, j - 1],
+            ]))
+
+    return dtw[T1, T2] / (T1 + T2)

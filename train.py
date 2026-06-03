@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 from torchvision.transforms import Compose
 from cowaver.datamodules import FilteredTinyMel, TinyMel, MixedTinyMel
-from cowaver.modules import DECODER_REGISTRY, MODEL_REGISTRY, TEMPORAL_ADAPTER_REGISTRY, CoWaver, build_model
+from cowaver.modules import ADAPTER_REGISTRY, ARCHITECTURE_REGISTRY, DECODER_REGISTRY, CoWaver, build_model
 from cowaver.models import TrainProgramme
 from cowaver.transforms import RandomAlign, RandomPosition, RandomScene
 from cowaver.utils import (
@@ -37,7 +37,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--architecture", "-a",
-    choices=sorted(MODEL_REGISTRY),
+    choices=sorted(ARCHITECTURE_REGISTRY),
     default="unconditioned",
     help="Model architecture to train.",
 )
@@ -48,7 +48,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--adapter",
-    choices=sorted(TEMPORAL_ADAPTER_REGISTRY),
+    choices=sorted(ADAPTER_REGISTRY),
     default="convolutional",
     help="Temporal adapter architecture between visual features and decoder.",
 )

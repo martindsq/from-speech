@@ -89,7 +89,7 @@ class TransformerTemporalAdapter(nn.Module):
         return self.norm(x)
 
 
-TEMPORAL_ADAPTER_REGISTRY = {
+ADAPTER_REGISTRY = {
     "convolutional": ConvolutionalTemporalAdapter,
     "relu-norm": TemporalReLUNorm,
     "recurrent": RecurrentTemporalAdapter,
@@ -99,9 +99,9 @@ TEMPORAL_ADAPTER_REGISTRY = {
 
 def build_temporal_adapter(adapter: str = "convolutional", **kwargs):
     try:
-        adapter_cls = TEMPORAL_ADAPTER_REGISTRY[adapter]
+        adapter_cls = ADAPTER_REGISTRY[adapter]
     except KeyError as exc:
-        options = ", ".join(sorted(TEMPORAL_ADAPTER_REGISTRY))
+        options = ", ".join(sorted(ADAPTER_REGISTRY))
         raise ValueError(f"Unknown temporal adapter '{adapter}'. Options: {options}") from exc
     return adapter_cls(**kwargs)
 
