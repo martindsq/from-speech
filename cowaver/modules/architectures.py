@@ -85,21 +85,7 @@ class CoWaver(TrainableModule):
         y_hat, _ = self(x, task_ids=task_ids)
         prototypes = data.mel_prototypes(y_hat.device)
 
-        B = y_hat.size(0)
-        P = prototypes.size(0)
-        distances = torch.empty(
-            B,
-            P,
-            device=y_hat.device,
-            dtype=y_hat.dtype,
-        )
-
-        for b in range(B):
-            for p in range(P):
-                distances[b, p] = distancia_mel(
-                    y_hat[b],
-                    prototypes[p],
-                )
+        distances = distancia_mel(y_hat, prototypes)
 
         k = min(5, distances.size(1))
         topk = distances.topk(k, dim=1, largest=False).indices

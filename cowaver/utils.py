@@ -529,53 +529,60 @@ def pca(X: Tensor, q: int = 2):
     return scores
 
 def distancia_mel(mel_a: torch.Tensor, mel_b: torch.Tensor) -> torch.Tensor:
-    """Calcula una distancia DTW entre dos espectrogramas mel.
+    """Calcula una distancia DTW entre espectrogramas mel.
 
     Parameters
     ----------
     mel_a: Tensor
-        Tensor de forma [mel_bins, seq_len], correspondiente al primer
-        espectrograma mel.
+        Tensor de forma [mel_bins, seq_len] o [B, mel_bins, seq_len],
+        correspondiente al primer espectrograma mel o a un batch.
 
     mel_b: Tensor
-        Tensor de forma [mel_bins, seq_len], correspondiente al segundo
-        espectrograma mel.
+        Tensor de forma [mel_bins, seq_len] o [P, mel_bins, seq_len],
+        correspondiente al segundo espectrograma mel o a un conjunto de
+        espectrogramas.
 
     Returns
     -------
-    distancia: Tensor
-        Tensor escalar con la distancia DTW normalizada entre ambos
-        espectrogramas.
+    distances: Tensor
+        Tensor de forma [B, P], donde distances[b, p] contiene la distancia
+        DTW normalizada entre mel_a[b] y mel_b[p]. Si alguna entrada era 2D,
+        se interpreta como un batch de tamaño 1.
     """
 
-    x = mel_a.T
-    y = mel_b.T
+    if mel_a.dim() == 2:
+        mel_a = mel_a.unsqueeze(0)
+    if mel_b.dim() == 2:
+        mel_b = mel_b.unsqueeze(0)
 
-    T1, D1 = x.shape
-    T2, D2 = y.shape
+    x = mel_a.transpose(1, 2)
+    y = mel_b.transpose(1, 2)
+
+    _, T1, D1 = x.shape
+    _, T2, D2 = y.shape
 
     if D1 != D2:
         raise ValueError(f"Dimensiones incompatibles: {x.shape} vs {y.shape}")
     
-    x = F.normalize(x, dim=1)
-    y = F.normalize(y, dim=1)
-    cost = 1 - x @ y.T
+    x = F.normalize(x, dim=2)
+    y = F.normalize(y, dim=2)
+    cost = 1 - torch.einsum("btd,psd->bpts", x, y)
 
     dtw = torch.full(
-        (T1 + 1, T2 + 1),
+        (x.size(0), y.size(0), T1 + 1, T2 + 1),
         float("inf"),
         device=mel_a.device,
         dtype=mel_a.dtype,
     )
 
-    dtw[0, 0] = 0.0
+    dtw[:, :, 0, 0] = 0.0
 
     for i in range(1, T1 + 1):
         for j in range(1, T2 + 1):
-            dtw[i, j] = cost[i - 1, j - 1] + torch.min(torch.stack([
-                dtw[i - 1, j],
-                dtw[i, j - 1],
-                dtw[i - 1, j - 1],
-            ]))
+            dtw[:, :, i, j] = cost[:, :, i - 1, j - 1] + torch.minimum(
+                torch.minimum(dtw[:, :, i - 1, j], dtw[:, :, i, j - 1]),
+                dtw[:, :, i - 1, j - 1],
+            )
 
-    return dtw[T1, T2] / (T1 + T2)
+    distances = dtw[:, :, T1, T2] / (T1 + T2)
+    return distances
