@@ -4,38 +4,52 @@ import torch.nn.functional as F
 from torch import Tensor
 from .common import ResidualTemporalBlock
 
-
 class ConvolutionalMelDecoder(nn.Module):
-    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, mel_bins: int = 40, seq_len: int = 49):
+    def __init__(
+        self,
+        latent_dim: int = 256,
+        hidden_size: int = 256,
+        mel_bins: int = 40,
+        seq_len: int = 49,
+    ):
         super().__init__()
+
         self.seq_len = seq_len
 
         self.in_proj = nn.Conv1d(latent_dim, hidden_size, kernel_size=1)
+
         self.pre_blocks = nn.Sequential(
-            ResidualTemporalBlock(hidden_size, kernel_size=5, dilation=1),
-            ResidualTemporalBlock(hidden_size, kernel_size=5, dilation=2),
+            ResidualTemporalBlock(hidden_size, kernel_size=3),
+            ResidualTemporalBlock(hidden_size, kernel_size=3),
         )
+
         self.post_blocks = nn.Sequential(
-            ResidualTemporalBlock(hidden_size, kernel_size=5, dilation=1),
-            ResidualTemporalBlock(hidden_size, kernel_size=3, dilation=1),
+            ResidualTemporalBlock(hidden_size, kernel_size=3),
+            ResidualTemporalBlock(hidden_size, kernel_size=3),
         )
+
         self.out_proj = nn.Conv1d(hidden_size, mel_bins, kernel_size=1)
 
-    def forward(self, z: Tensor):
+    def forward(self, z: Tensor) -> Tensor:
         if z.dim() == 2:
             z = z.unsqueeze(0)
 
-        x = z.transpose(1, 2)
-        x = self.in_proj(x)
-        x = self.pre_blocks(x)
+        x = z.transpose(1, 2)      # [B, T_z, latent_dim] -> [B, latent_dim, T_z]
+
+        x = self.in_proj(x)        # [B, hidden_size, T_z]
+        x = self.pre_blocks(x)     # [B, hidden_size, T_z]
+
         x = F.interpolate(
             x,
             size=self.seq_len,
             mode="linear",
-            align_corners=False
-        )
-        x = self.post_blocks(x)
-        return self.out_proj(x)
+            align_corners=False,
+        )                          # [B, hidden_size, seq_len]
+
+        x = self.post_blocks(x)    # [B, hidden_size, seq_len]
+        mel = self.out_proj(x)     # [B, mel_bins, seq_len]
+
+        return mel
 
 class RecurrentMelDecoder(nn.Module):
     def __init__(self, latent_dim: int = 256, hidden_size: int = 256, mel_bins: int = 40, seq_len: int = 49, num_layers: int = 1):

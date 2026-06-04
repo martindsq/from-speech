@@ -42,17 +42,17 @@ class CTCHead(nn.Module):
             target_lengths.to(h.device),
         )
 
-
 class ResidualTemporalBlock(nn.Module):
-    def __init__(self, channels: int, kernel_size: int = 5, dilation: int = 1):
+    def __init__(self, channels: int, kernel_size: int = 3):
         super().__init__()
-        padding = dilation * (kernel_size // 2)
-        self.block = nn.Sequential(
-            nn.Conv1d(channels, channels, kernel_size=kernel_size, padding=padding, dilation=dilation),
-            nn.ReLU(inplace=True),
-            nn.Conv1d(channels, channels, kernel_size=kernel_size, padding=padding, dilation=dilation),
-            nn.ReLU(inplace=True),
-        )
+        padding = kernel_size // 2
+
+        self.conv1 = nn.Conv1d(channels, channels, kernel_size, padding=padding)
+        self.conv2 = nn.Conv1d(channels, channels, kernel_size, padding=padding)
+        self.act = nn.ReLU(inplace=True)
 
     def forward(self, x: Tensor) -> Tensor:
-        return x + self.block(x)
+        y = self.conv1(x)
+        y = self.act(y)
+        y = self.conv2(y)
+        return self.act(x + y)

@@ -19,25 +19,26 @@ class TemporalReLUNorm(nn.Module):
             h = h.unsqueeze(0)
         return self.proj(h)
 
-
 class ConvolutionalTemporalAdapter(nn.Module):
     def __init__(self, input_dim: int = 512, latent_dim: int = 256, **_):
         super().__init__()
+
         self.in_proj = nn.Conv1d(input_dim, latent_dim, kernel_size=1)
+
         self.blocks = nn.Sequential(
-            ResidualTemporalBlock(latent_dim, kernel_size=3, dilation=1),
-            ResidualTemporalBlock(latent_dim, kernel_size=3, dilation=1),
-            ResidualTemporalBlock(latent_dim, kernel_size=3, dilation=1),
+            ResidualTemporalBlock(latent_dim, kernel_size=3),
+            ResidualTemporalBlock(latent_dim, kernel_size=3),
+            ResidualTemporalBlock(latent_dim, kernel_size=3),
         )
 
     def forward(self, h: Tensor) -> Tensor:
         if h.dim() == 2:
             h = h.unsqueeze(0)
-        x = h.transpose(1, 2)
-        x = self.in_proj(x)
-        x = self.blocks(x)
-        return x.transpose(1, 2)
 
+        x = h.transpose(1, 2)      # [B, T, C] -> [B, C, T]
+        x = self.in_proj(x)        # [B, 512, T] -> [B, 256, T]
+        x = self.blocks(x)         # [B, 256, T]
+        return x.transpose(1, 2)   # [B, T, 256]
 
 class RecurrentTemporalAdapter(nn.Module):
     def __init__(self, input_dim: int = 512, latent_dim: int = 256, num_layers: int = 2, **_):
