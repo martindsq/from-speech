@@ -52,6 +52,9 @@ class CoWaver(TrainableModule):
         h = self.visual_encoder(x)
         return self.adapter(h)
 
+    def autoencode(self, x: Tensor) -> Tensor:
+        return self.mel_encoder(x)
+
     def decode(self, z: Tensor, task_ids: Tensor | None = None, phase: int = 3) -> tuple[Tensor, Tensor]:
         raise NotImplementedError
 
@@ -61,9 +64,9 @@ class CoWaver(TrainableModule):
 
     def training_step(self, batch, batch_idx, phase: int):
         x, y, _, task_ids, ctc_targets, ctc_lengths = unpack_batch(batch)
-        ctc_z = self.encode(x)
-        y_hat, _ = self.decode(ctc_z, task_ids=task_ids, phase=phase)
-        return self.training_loss(y_hat, y, ctc_z, ctc_targets, ctc_lengths)
+        z = self.encode(x)
+        y_hat, _ = self.decode(z, task_ids=task_ids, phase=phase)
+        return self.training_loss(y_hat, y, z, ctc_targets, ctc_lengths)
 
     def training_loss(
         self,
@@ -103,9 +106,24 @@ class CoWaver(TrainableModule):
         return self(x, task_ids=task_ids)
 
     def optimizer(self, phase: int, programme: TrainProgramme) -> Optimizer:
+        visual_encoder_lr_factor = 0.1
+        visual_encoder_params = list(self.visual_encoder.parameters())
+        visual_encoder_param_ids = {id(param) for param in visual_encoder_params}
+        other_params = [
+            param for param in self.parameters()
+            if id(param) not in visual_encoder_param_ids
+        ]
         return AdamW(
-            self.parameters(),
-            lr=programme.epsilon_zero,
+            [
+                {
+                    "params": visual_encoder_params,
+                    "lr": programme.epsilon_zero * visual_encoder_lr_factor,
+                },
+                {
+                    "params": other_params,
+                    "lr": programme.epsilon_zero,
+                },
+            ],
             weight_decay=1e-4,
         )
 

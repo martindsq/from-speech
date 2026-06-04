@@ -37,7 +37,6 @@ class ConvolutionalMelDecoder(nn.Module):
         x = self.post_blocks(x)
         return self.out_proj(x)
 
-
 class RecurrentMelDecoder(nn.Module):
     def __init__(self, latent_dim: int = 256, hidden_size: int = 256, mel_bins: int = 40, seq_len: int = 49, num_layers: int = 1):
         super().__init__()
@@ -52,7 +51,14 @@ class RecurrentMelDecoder(nn.Module):
             bidirectional=True,
             dropout=0.1 if num_layers > 1 else 0.0,
         )
-        self.out_proj = nn.Linear(hidden_size, mel_bins)
+        self.out_proj = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.GELU(),
+            nn.Linear(hidden_size, mel_bins)
+        )
+        self.refiner = nn.Sequential(
+            nn.Conv1d(mel_bins, mel_bins, kernel_size=5, padding=2),
+        )
 
     def forward(self, z: Tensor):
         if z.dim() == 2:
@@ -65,8 +71,9 @@ class RecurrentMelDecoder(nn.Module):
             align_corners=False
         ).transpose(1, 2)
         x, _ = self.rnn(x)
-        return self.out_proj(x).transpose(1, 2)
-
+        raw_mel = self.out_proj(x).transpose(1, 2)
+        refined_mel = raw_mel + self.refiner(raw_mel)
+        return refined_mel
 
 class Seq2SeqMelDecoder(nn.Module):
     def __init__(self, latent_dim: int = 256, hidden_size: int = 256, mel_bins: int = 40, seq_len: int = 49, num_layers: int = 2):

@@ -11,7 +11,7 @@ class TemporalReLUNorm(nn.Module):
         self.proj = nn.Sequential(
             nn.Linear(input_dim, latent_dim),
             nn.LayerNorm(latent_dim),
-            nn.ReLU(),
+            nn.GELU(),
         )
 
     def forward(self, h: Tensor) -> Tensor:

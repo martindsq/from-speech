@@ -32,7 +32,7 @@ parser.add_argument(
 )
 parser.add_argument(
     '--checkpoints', '-c',
-    default=None,
+    default="checkpoints",
     help="Directory where phase checkpoints are saved. Omit to skip saving."
 )
 parser.add_argument(
@@ -43,13 +43,13 @@ parser.add_argument(
 )
 parser.add_argument(
     "--decoder", choices=sorted(DECODER_REGISTRY),
-    default="convolutional",
+    default="recurrent",
     help="Mel decoder architecture.",
 )
 parser.add_argument(
     "--adapter",
     choices=sorted(ADAPTER_REGISTRY),
-    default="convolutional",
+    default="relu-norm",
     help="Temporal adapter architecture between visual features and decoder.",
 )
 parser.add_argument(
@@ -67,13 +67,13 @@ parser.add_argument(
 parser.add_argument(
     "--theta-max",
     type=int,
-    default=90,
+    default=20,
     help="Total number of epochs across all curriculum phases."
 )
 parser.add_argument(
     "--max-classes",
     type=int,
-    default=200,
+    default=50,
     help="Maximum number of word classes to include"
 )
 parser.add_argument(
@@ -93,7 +93,7 @@ parser.add_argument(
     "--theta",
     "-t",
     type=int,
-    default=60,
+    default=20,
     help="Global epoch where the learning-rate decay reaches epsilon_theta.",
 )
 parser.add_argument(
@@ -232,14 +232,14 @@ def eval_cowaver(cowaver: CoWaver, letters: TinyMel, phones: TinyMel, words: Tin
     """Evalúa el modelo en letras, phones train/test y words train/test."""
     print(f"Evaluando en {tiny_letter_path.stem}", end="... ")
     print(evaluar_red(cowaver, letters))
-    print(f"Evaluando en {tiny_phones_path.stem} train", end="... ")
-    print(evaluar_red(cowaver, phones))
-    print(f"Evaluando en {tiny_phones_path.stem} test", end="... ")
-    print(evaluar_red(cowaver, phones_test))
-    print(f"Evaluando en {tiny_mswc_path.stem} train", end="... ")
-    print(evaluar_red(cowaver, words))
-    print(f"Evaluando en {tiny_mswc_path.stem} test", end="... ")
-    print(evaluar_red(cowaver, words_test))
+    # print(f"Evaluando en {tiny_phones_path.stem} train", end="... ")
+    # print(evaluar_red(cowaver, phones))
+    # print(f"Evaluando en {tiny_phones_path.stem} test", end="... ")
+    # print(evaluar_red(cowaver, phones_test))
+    # print(f"Evaluando en {tiny_mswc_path.stem} train", end="... ")
+    # print(evaluar_red(cowaver, words))
+    # print(f"Evaluando en {tiny_mswc_path.stem} test", end="... ")
+    # print(evaluar_red(cowaver, words_test))
 
 def make_phase_data(letters: TinyMel, phones: TinyMel, words: TinyMel, proportions: list[float]):
     """Construye el datamodule de una fase a partir de sus proporciones activas."""
