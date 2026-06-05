@@ -49,7 +49,7 @@ parser.add_argument(
 parser.add_argument(
     "--adapter",
     choices=sorted(ADAPTER_REGISTRY),
-    default="relu-norm",
+    default="convolutional",
     help="Temporal adapter architecture between visual features and decoder.",
 )
 parser.add_argument(
@@ -232,14 +232,14 @@ def eval_cowaver(cowaver: CoWaver, letters: TinyMel, phones: TinyMel, words: Tin
     """Evalúa el modelo en letras, phones train/test y words train/test."""
     print(f"Evaluando en {tiny_letter_path.stem}", end="... ")
     print(evaluar_red(cowaver, letters))
-    # print(f"Evaluando en {tiny_phones_path.stem} train", end="... ")
-    # print(evaluar_red(cowaver, phones))
-    # print(f"Evaluando en {tiny_phones_path.stem} test", end="... ")
-    # print(evaluar_red(cowaver, phones_test))
-    # print(f"Evaluando en {tiny_mswc_path.stem} train", end="... ")
-    # print(evaluar_red(cowaver, words))
-    # print(f"Evaluando en {tiny_mswc_path.stem} test", end="... ")
-    # print(evaluar_red(cowaver, words_test))
+    print(f"Evaluando en {tiny_phones_path.stem} train", end="... ")
+    print(evaluar_red(cowaver, phones))
+    print(f"Evaluando en {tiny_phones_path.stem} test", end="... ")
+    print(evaluar_red(cowaver, phones_test))
+    print(f"Evaluando en {tiny_mswc_path.stem} train", end="... ")
+    print(evaluar_red(cowaver, words))
+    print(f"Evaluando en {tiny_mswc_path.stem} test", end="... ")
+    print(evaluar_red(cowaver, words_test))
 
 def make_phase_data(letters: TinyMel, phones: TinyMel, words: TinyMel, proportions: list[float]):
     """Construye el datamodule de una fase a partir de sus proporciones activas."""
