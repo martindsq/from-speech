@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --ntasks=1
 #SBATCH --mem=2048
-#SBATCH --time=1:00:00
+#SBATCH --time=1:30:00
 #SBATCH --partition=normal
 #SBATCH --qos=gpu
 #SBATCH --output=out/%x.out
@@ -15,19 +15,19 @@ cd ~/cowaver
 # Architectures:
 #   unconditioned, conditioned, dual-route
 #
-# Decoders:
-#   convolutional, recurrent, transformer
-#
 # Adapters:
 #   convolutional, recurrent, transformer
 #
-# Example:
+# Decoders:
+#   convolutional, recurrent, transformer
+#
+# :xample:
 #   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 50
 #   sbatch --job-name=MY_JOB_NAME train.batch dual-route convolutional transformer 256 256 50 90 3e-4 30 3e-5
 
 ARCHITECTURE=${1:?Missing architecture}
-DECODER=${2:?Missing decoder}
-ADAPTER=${3:?Missing adapter}
+ADAPTER=${2:?Missing adapter}
+DECODER=${3:?Missing decoder}
 LATENT_DIM=${4:-256}
 HIDDEN_SIZE=${5:-256}
 MAX_CLASSES=${6:-200}
@@ -35,7 +35,7 @@ THETA_MAX=${7:-60}
 EPSILON_ZERO=${8:-3e-4}
 THETA=${9:-45}
 EPSILON_THETA=${10:-3e-5}
-CTC_WEIGHT=${11:-0.1}
+CTC_WEIGHT=${11:-0}
 PHASE1_LETTERS=${12:-1}
 PHASE1_PHONES=${13:-0}
 PHASE1_WORDS=${14:-0}
@@ -48,6 +48,7 @@ PHASE3_WORDS=${20:-0.85}
 
 python train.py \
   --data /scratch/$USER/${SLURM_JOB_ID:-$(date +%Y%m%d%H%M%S)} \
+  --checkpoints checkpoints/$SLURM_JOB_NAME \
   --architecture $ARCHITECTURE \
   --adapter $ADAPTER \
   --decoder $DECODER \
