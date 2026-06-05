@@ -65,4 +65,7 @@ def cargar_checkpoint(net: TrainableModule, device: device = device("cpu"), phas
         val_loss = train_history.val_losses[epoch]
         if not silent:
             print(f"Epoch {epoch+1}/{num_epochs} | train_loss={train_loss:.4f} | val_loss={val_loss:.4f}")
+    for test_loss in train_history.test_losses:
+        if not silent:
+            print(f"Phase {phase} | test_loss={test_loss:.4f}")
     return train_history

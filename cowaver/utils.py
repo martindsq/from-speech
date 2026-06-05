@@ -461,10 +461,31 @@ def entrenar_red(net: TrainableModule, data: DataModule, programme: TrainProgram
 
         print(f"Epoch {epoch+1}/{num_epochs} | " f"train_loss={epoch_train_loss:.4f} | val_loss={epoch_val_loss:.4f}")
 
+    test_loss = evaluar_loss(net, data, phase=phase, dispositivo=dispositivo)
+    train_history.test_losses.append(test_loss)
+    print(f"Phase {phase} | test_loss={test_loss:.4f}")
+
     if checkpoints_folder is not None:
         guardar_checkpoint(net, train_history, programme, phase, checkpoints_folder)
 
     return train_history
+
+def evaluar_loss(net: TrainableModule, data: DataModule, phase: int = 1, dispositivo: device | None = None) -> float:
+    """Mide la loss de entrenamiento sobre el conjunto de test."""
+    if dispositivo is None:
+        dispositivo = encontrar_dispositivo(silent=True)
+    net = mover_a_dispositivo(net, dispositivo)
+    test_loader = data.test_loader()
+
+    net.eval()
+    running_loss = 0.0
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(test_loader):
+            batch = mover_a_dispositivo(batch, dispositivo)
+            loss = net.training_step(batch, batch_idx, phase)
+            running_loss += loss.item()
+
+    return running_loss / len(test_loader)
 
 def evaluar_red(net: TrainableModule, data: DataModule):
     """Evalúa una red neuronal artificial.

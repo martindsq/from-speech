@@ -1,22 +1,19 @@
 import argparse
 from pathlib import Path
-from torchvision.transforms import Compose
-from cowaver.datamodules import FilteredTinyMel, TinyMel, MixedTinyMel
+from cowaver.datamodules import TinyMel, MixedTinyMel
 from cowaver.modules import ADAPTER_REGISTRY, ARCHITECTURE_REGISTRY, DECODER_REGISTRY, CoWaver, build_model
 from cowaver.models import TrainProgramme
-from cowaver.transforms import RandomAlign, RandomPosition, RandomScene
+from cowaver.transforms import RandomPosition
 from cowaver.utils import (
     descomprimir_archivo,
     encontrar_dispositivo,
     entrenar_red,
-    evaluar_red,
     borrar_carpeta,
     construir_vocabulario_caracteres,
     listar_clases,
     seleccionar_clases,
     separar_clases,
 )
-from cowaver.checkpoints import cargar_checkpoint
 
 parser = argparse.ArgumentParser(
     description=(
@@ -228,19 +225,6 @@ char_to_idx = construir_vocabulario_caracteres([
 ctc_vocab_size = len(char_to_idx) + 1
 print("--ctc-vocab-size", ctc_vocab_size)
 
-def eval_cowaver(cowaver: CoWaver, letters: TinyMel, phones: TinyMel, words: TinyMel, phones_test: TinyMel, words_test: TinyMel):
-    """Evalúa el modelo en letras, phones train/test y words train/test."""
-    print(f"Evaluando en {tiny_letter_path.stem}", end="... ")
-    print(evaluar_red(cowaver, letters))
-    print(f"Evaluando en {tiny_phones_path.stem} train", end="... ")
-    print(evaluar_red(cowaver, phones))
-    print(f"Evaluando en {tiny_phones_path.stem} test", end="... ")
-    print(evaluar_red(cowaver, phones_test))
-    print(f"Evaluando en {tiny_mswc_path.stem} train", end="... ")
-    print(evaluar_red(cowaver, words))
-    print(f"Evaluando en {tiny_mswc_path.stem} test", end="... ")
-    print(evaluar_red(cowaver, words_test))
-
 def make_phase_data(letters: TinyMel, phones: TinyMel, words: TinyMel, proportions: list[float]):
     """Construye el datamodule de una fase a partir de sus proporciones activas."""
     datamodules = [letters, phones, words]
@@ -274,14 +258,6 @@ def train_cowaver(cowaver: CoWaver):
         classes=phone_train_classes,
         char_to_idx=char_to_idx,
     )
-    phones_all = TinyMel(
-        base_dir=tiny_phones_path,
-        mel_bins=cowaver.mel_bins,
-        task_id=1,
-        classes=phone_classes,
-        char_to_idx=char_to_idx,
-    )
-    phones_test = FilteredTinyMel(phones_all, phone_test_classes)
     words_train = TinyMel(
         base_dir=tiny_mswc_path,
         mel_bins=cowaver.mel_bins,
@@ -289,43 +265,35 @@ def train_cowaver(cowaver: CoWaver):
         classes=word_train_classes,
         char_to_idx=char_to_idx,
     )
-    words_all = TinyMel(
-        base_dir=tiny_mswc_path,
-        mel_bins=cowaver.mel_bins,
-        task_id=2,
-        classes=word_classes,
-        char_to_idx=char_to_idx,
-    )
-    words_test = FilteredTinyMel(words_all, word_test_classes)
+    phase1_data = make_phase_data(letters, phones_train, words_train, args.phase1_proportions)
     entrenar_red(
         net=cowaver,
-        data=make_phase_data(letters, phones_train, words_train, args.phase1_proportions),
+        data=phase1_data,
         programme=programme,
         phase=1,
         dispositivo=dispositivo,
         checkpoints_folder=checkpoints_path
     )
-    eval_cowaver(cowaver, letters, phones_train, words_train, phones_test, words_test)
     if phase2_enabled:
+        phase2_data = make_phase_data(letters, phones_train, words_train, args.phase2_proportions)
         entrenar_red(
             net=cowaver,
-            data=make_phase_data(letters, phones_train, words_train, args.phase2_proportions),
+            data=phase2_data,
             programme=programme,
             phase=2,
             dispositivo=dispositivo,
             checkpoints_folder=checkpoints_path
         )
-        eval_cowaver(cowaver, letters, phones_train, words_train, phones_test, words_test)
     if phase3_enabled:
+        phase3_data = make_phase_data(letters, phones_train, words_train, args.phase3_proportions)
         entrenar_red(
             net=cowaver,
-            data=make_phase_data(letters, phones_train, words_train, args.phase3_proportions),
+            data=phase3_data,
             programme=programme,
             phase=3,
             dispositivo=dispositivo,
             checkpoints_folder=checkpoints_path
         )
-        eval_cowaver(cowaver, letters, phones_train, words_train, phones_test, words_test)
 
 model_kwargs = {
     "latent_dim": args.latent_dim,

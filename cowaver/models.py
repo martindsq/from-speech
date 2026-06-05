@@ -160,6 +160,7 @@ class TrainableModule(nn.Module):
 class TrainHistory:
     train_losses: list[float] = field(default_factory=list)
     val_losses: list[float] = field(default_factory=list)
+    test_losses: list[float] = field(default_factory=list)
     
     @property
     def num_epochs(self) -> int:
