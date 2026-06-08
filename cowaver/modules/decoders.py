@@ -89,6 +89,54 @@ class RecurrentMelDecoder(nn.Module):
         refined_mel = raw_mel + self.refiner(raw_mel)
         return refined_mel
 
+class RecurrentMelDecoder(nn.Module):
+    def __init__(self, latent_dim: int = 256, hidden_size: int = 256, mel_bins: int = 40, seq_len: int = 49, num_layers: int = 1):
+        super().__init__()
+        if hidden_size % 2 != 0:
+            raise ValueError("RecurrentMelDecoder requires an even hidden_size.")
+        self.seq_len = seq_len
+        self.queries = nn.Parameter(torch.randn(seq_len, latent_dim) * 0.02)
+        self.attention = nn.MultiheadAttention(
+            embed_dim=latent_dim,
+            num_heads=4,
+            batch_first=True
+        )
+        self.attention_norm = nn.LayerNorm(latent_dim)
+        self.rnn = nn.GRU(
+            input_size=latent_dim,
+            hidden_size=hidden_size // 2,
+            num_layers=num_layers,
+            batch_first=True,
+            bidirectional=True,
+            dropout=0.1 if num_layers > 1 else 0.0,
+        )
+        self.out_proj = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.GELU(),
+            nn.Linear(hidden_size, mel_bins)
+        )
+        # self.refiner = nn.Sequential(
+        #     nn.Conv1d(mel_bins, mel_bins, kernel_size=5, padding=2),
+        # )
+
+    def forward(self, z: Tensor):
+        if z.dim() == 2:
+            z = z.unsqueeze(0)
+        B = z.size(0)
+        q = self.queries.unsqueeze(0).expand(B, -1, -1)
+        x, _ = self.attention(
+            query=q,
+            key=z,
+            value=z,
+            need_weights=False
+        )
+        x = self.attention_norm(q + x)
+        x, _ = self.rnn(x)
+        raw_mel = self.out_proj(x).transpose(1, 2)
+        # refined_mel = raw_mel + self.refiner(raw_mel)
+        # return refined_mel
+        return raw_mel
+
 class Seq2SeqMelDecoder(nn.Module):
     def __init__(self, latent_dim: int = 256, hidden_size: int = 256, mel_bins: int = 40, seq_len: int = 49, num_layers: int = 2):
         super().__init__()
