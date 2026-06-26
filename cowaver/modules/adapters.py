@@ -16,6 +16,7 @@ class PointwiseTemporalAdapter(nn.Module):
         super().__init__()
         self.proj = nn.Sequential(
             nn.Linear(input_dim, latent_dim),
+            nn.LayerNorm(latent_dim),
             nn.GELU(),
         )
 
