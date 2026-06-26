@@ -106,26 +106,7 @@ class CoWaver(TrainableModule):
         return self(x, task_ids=task_ids)
 
     def optimizer(self, phase: int, programme: TrainProgramme) -> Optimizer:
-        visual_encoder_lr_factor = 0.1
-        visual_encoder_params = list(self.visual_encoder.parameters())
-        visual_encoder_param_ids = {id(param) for param in visual_encoder_params}
-        other_params = [
-            param for param in self.parameters()
-            if id(param) not in visual_encoder_param_ids
-        ]
-        return AdamW(
-            [
-                {
-                    "params": visual_encoder_params,
-                    "lr": programme.epsilon_zero * visual_encoder_lr_factor,
-                },
-                {
-                    "params": other_params,
-                    "lr": programme.epsilon_zero,
-                },
-            ],
-            weight_decay=1e-4,
-        )
+        return AdamW(params=self.parameters(), lr=programme.epsilon_zero, weight_decay=1e-4)
 
     def scheduler(self, optimizer: Optimizer, phase: int, programme: TrainProgramme) -> LRScheduler:
         start_epoch = programme.epochs_before_phase(phase)

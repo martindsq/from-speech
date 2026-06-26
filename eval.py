@@ -27,7 +27,7 @@ parser.add_argument(
 parser.add_argument(
     "--adapter",
     choices=sorted(ADAPTER_REGISTRY),
-    default="convolutional",
+    default="pointwise",
 )
 parser.add_argument(
     "--decoder",

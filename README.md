@@ -51,7 +51,7 @@ python train.py \
   --data data \
   --checkpoints checkpoints \
   --architecture dual-route \
-  --adapter transformer \
+  --adapter convolutional \
   --decoder convolutional
 ```
 
@@ -67,15 +67,13 @@ Decoders disponibles:
 
 - `convolutional`
 - `recurrent`
-- `seq2seq`
-- `transformer`
 
 Adapters temporales disponibles:
 
 - `convolutional`
-- `relu-norm`
-- `recurrent`
-- `transformer`
+- `pointwise`: proyecta cada posición visual de forma independiente mediante
+  `Linear → LayerNorm → GELU`; conserva la longitud y no mezcla información
+  entre posiciones.
 
 Las proporciones de cada fase se pasan como triples en el orden:
 `letters phones words`.
@@ -110,7 +108,7 @@ python eval.py \
   --data data \
   --checkpoints checkpoints \
   --architecture dual-route \
-  --adapter transformer \
+  --adapter convolutional \
   --decoder convolutional
 ```
 
@@ -192,7 +190,7 @@ checkpoints/<architecture>/<adapter>/<decoder>/
 Evaluar checkpoints en Slurm:
 
 ```bash
-sbatch --mail-user="$USER_MAIL" eval.batch dual-route convolutional transformer
+sbatch --mail-user="$USER_MAIL" eval.batch dual-route convolutional recurrent
 ```
 
 ## Checkpoints y salidas

@@ -1,5 +1,7 @@
 import argparse
 from pathlib import Path
+from time import perf_counter
+
 from cowaver.datamodules import TinyMel, MixedTinyMel
 from cowaver.modules import ADAPTER_REGISTRY, ARCHITECTURE_REGISTRY, DECODER_REGISTRY, CoWaver, build_model
 from cowaver.models import TrainProgramme
@@ -39,15 +41,15 @@ parser.add_argument(
     help="Model architecture to train.",
 )
 parser.add_argument(
+    "--adapter",
+    choices=sorted(ADAPTER_REGISTRY),
+    default="pointwise",
+    help="Temporal adapter architecture between visual features and decoder.",
+)
+parser.add_argument(
     "--decoder", choices=sorted(DECODER_REGISTRY),
     default="recurrent",
     help="Mel decoder architecture.",
-)
-parser.add_argument(
-    "--adapter",
-    choices=sorted(ADAPTER_REGISTRY),
-    default="convolutional",
-    help="Temporal adapter architecture between visual features and decoder.",
 )
 parser.add_argument(
     "--latent-dim",
@@ -198,9 +200,13 @@ tiny_letter_xz_path = Path("tiny-letter-30.tar.xz")
 tiny_phones_xz_path = Path("tiny-phones-500.tar.xz")
 tiny_mswc_xz_path = Path("tiny-mswc-500.tar.xz")
 
+decompression_started_at = perf_counter()
 tiny_letter_path = descomprimir_archivo(tiny_letter_xz_path, data_path)
 tiny_phones_path = descomprimir_archivo(tiny_phones_xz_path, data_path)
 tiny_mswc_path = descomprimir_archivo(tiny_mswc_xz_path, data_path)
+decompression_seconds = perf_counter() - decompression_started_at
+print(f"Cronómetro descomprension: {decompression_seconds:.2f}")
+
 dispositivo = encontrar_dispositivo()
 
 letter_classes = listar_clases(tiny_letter_path / "train")
@@ -242,7 +248,22 @@ def make_phase_data(letters: TinyMel, phones: TinyMel, words: TinyMel, proportio
         names=[name for _, _, name in active],
     )
 
-def train_cowaver(cowaver: CoWaver): 
+
+def train_phase(cowaver: CoWaver, data, phase: int):
+    """Entrena una fase e informa su duración total en segundos."""
+    phase_started_at = perf_counter()
+    entrenar_red(
+        net=cowaver,
+        data=data,
+        programme=programme,
+        phase=phase,
+        dispositivo=dispositivo,
+        checkpoints_folder=checkpoints_path,
+    )
+    phase_seconds = perf_counter() - phase_started_at
+    print(f"Phase {phase} stopwatch: {phase_seconds:.2f}")
+
+def train_cowaver(cowaver: CoWaver):
     letters = TinyMel(
         base_dir=tiny_letter_path,
         mel_bins=cowaver.mel_bins,
@@ -266,34 +287,13 @@ def train_cowaver(cowaver: CoWaver):
         char_to_idx=char_to_idx,
     )
     phase1_data = make_phase_data(letters, phones_train, words_train, args.phase1_proportions)
-    entrenar_red(
-        net=cowaver,
-        data=phase1_data,
-        programme=programme,
-        phase=1,
-        dispositivo=dispositivo,
-        checkpoints_folder=checkpoints_path
-    )
+    train_phase(cowaver, phase1_data, phase=1)
     if phase2_enabled:
         phase2_data = make_phase_data(letters, phones_train, words_train, args.phase2_proportions)
-        entrenar_red(
-            net=cowaver,
-            data=phase2_data,
-            programme=programme,
-            phase=2,
-            dispositivo=dispositivo,
-            checkpoints_folder=checkpoints_path
-        )
+        train_phase(cowaver, phase2_data, phase=2)
     if phase3_enabled:
         phase3_data = make_phase_data(letters, phones_train, words_train, args.phase3_proportions)
-        entrenar_red(
-            net=cowaver,
-            data=phase3_data,
-            programme=programme,
-            phase=3,
-            dispositivo=dispositivo,
-            checkpoints_folder=checkpoints_path
-        )
+        train_phase(cowaver, phase3_data, phase=3)
 
 model_kwargs = {
     "latent_dim": args.latent_dim,

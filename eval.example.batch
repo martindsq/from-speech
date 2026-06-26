@@ -18,13 +18,13 @@ cd ~/cowaver
 #   unconditioned, conditioned, dual-route
 #
 # Decoders:
-#   convolutional, recurrent, transformer
+#   convolutional, recurrent
 #
 # Adapters:
-#   convolutional, recurrent, transformer
+#   convolutional, pointwise
 #
 # Example:
-#   sbatch eval.batch dual-route convolutional transformer
+#   sbatch eval.batch dual-route convolutional recurrent
 
 ARCHITECTURE=${1:-unconditioned}
 DECODER=${2:-convolutional}
