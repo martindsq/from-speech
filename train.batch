@@ -59,7 +59,7 @@ python train.py \
   --epsilon-zero "$EPSILON_ZERO" \
   --theta "$THETA" \
   --epsilon-theta "$EPSILON_THETA" \
-  --phase1-proportions "$PHASE1_LETTERS" "$PHASE1_PHONES" "$PHASE1_WORDS" \
-  --phase2-proportions "$PHASE2_LETTERS" "$PHASE2_PHONES" "$PHASE2_WORDS" \
-  --phase3-proportions "$PHASE3_LETTERS" "$PHASE3_PHONES" "$PHASE3_WORDS" \
+  --phase1 "$PHASE1_LETTERS" "$PHASE1_PHONES" "$PHASE1_WORDS" \
+  --phase2 "$PHASE2_LETTERS" "$PHASE2_PHONES" "$PHASE2_WORDS" \
+  --phase3 "$PHASE3_LETTERS" "$PHASE3_PHONES" "$PHASE3_WORDS" \
   --ctc-weight "$CTC_WEIGHT"

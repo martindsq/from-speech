@@ -103,7 +103,7 @@ parser.add_argument(
     help="Learning rate at epoch theta and for the flat tail of training.",
 )
 parser.add_argument(
-    "--phase1-proportions",
+    "--phase1",
     "-p1",
     nargs=3,
     type=float,
@@ -112,7 +112,7 @@ parser.add_argument(
     help="Sampling proportions for letters, phones, and words in phase 1.",
 )
 parser.add_argument(
-    "--phase2-proportions",
+    "--phase2",
     "-p2",
     nargs=3,
     type=float,
@@ -121,7 +121,7 @@ parser.add_argument(
     help="Sampling proportions for letters, phones, and words in phase 2.",
 )
 parser.add_argument(
-    "--phase3-proportions",
+    "--phase3",
     "-p3",
     nargs=3,
     type=float,
@@ -132,17 +132,17 @@ parser.add_argument(
 args = parser.parse_args()
 if any(
     proportion < 0
-    for proportions in (args.phase1_proportions, args.phase2_proportions, args.phase3_proportions)
+    for proportions in (args.phase1, args.phase2, args.phase3)
     for proportion in proportions
 ):
     parser.error("phase proportions must be non-negative")
-phase1_enabled = any(proportion > 0 for proportion in args.phase1_proportions)
-phase2_enabled = any(proportion > 0 for proportion in args.phase2_proportions)
-phase3_enabled = any(proportion > 0 for proportion in args.phase3_proportions)
+phase1_enabled = any(proportion > 0 for proportion in args.phase1)
+phase2_enabled = any(proportion > 0 for proportion in args.phase2)
+phase3_enabled = any(proportion > 0 for proportion in args.phase3)
 if not phase1_enabled:
-    parser.error("--phase1-proportions must be non-zero")
+    parser.error("--phase1must be non-zero")
 if phase3_enabled and not phase2_enabled:
-    parser.error("--phase3-proportions requires --phase2-proportions to be non-zero")
+    parser.error("--phase3 requires --phase2 to be non-zero")
 num_phases = 1 + int(phase2_enabled) + int(phase3_enabled)
 if args.theta_max <= 0:
     parser.error("--theta-max must be positive")
@@ -180,9 +180,9 @@ print("--ctc-weight", args.ctc_weight)
 print("--epsilon-zero", args.epsilon_zero)
 print("--theta", args.theta)
 print("--epsilon-theta", args.epsilon_theta)
-print("--phase1-proportions", args.phase1_proportions)
-print("--phase2-proportions", args.phase2_proportions)
-print("--phase3-proportions", args.phase3_proportions)
+print("--phase1", args.phase1)
+print("--phase2", args.phase2)
+print("--phase3", args.phase3)
 print("--phase1-enabled", phase1_enabled)
 print("--phase2-enabled", phase2_enabled)
 print("--phase3-enabled", phase3_enabled)
@@ -286,13 +286,28 @@ def train_cowaver(cowaver: CoWaver):
         classes=word_train_classes,
         char_to_idx=char_to_idx,
     )
-    phase1_data = make_phase_data(letters, phones_train, words_train, args.phase1_proportions)
+    phase1_data = make_phase_data(
+        letters,
+        phones_train,
+        words_train,
+        args.phase1
+    )
     train_phase(cowaver, phase1_data, phase=1)
     if phase2_enabled:
-        phase2_data = make_phase_data(letters, phones_train, words_train, args.phase2_proportions)
+        phase2_data = make_phase_data(
+            letters,
+            phones_train,
+            words_train,
+            args.phase2
+        )
         train_phase(cowaver, phase2_data, phase=2)
     if phase3_enabled:
-        phase3_data = make_phase_data(letters, phones_train, words_train, args.phase3_proportions)
+        phase3_data = make_phase_data(
+            letters,
+            phones_train,
+            words_train,
+            args.phase3
+        )
         train_phase(cowaver, phase3_data, phase=3)
 
 model_kwargs = {

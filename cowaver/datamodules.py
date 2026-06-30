@@ -1,3 +1,4 @@
+from pathlib import Path
 import torch
 from torch.nn import Module
 from torch.utils.data import ConcatDataset, DataLoader, WeightedRandomSampler
@@ -33,7 +34,7 @@ class TinyMel(DataModule):
     """
     def __init__(
         self,
-        base_dir: str,
+        base_dir: str | Path,
         char_to_idx: dict[str, int],
         mel_bins: int = 40,
         transform: Module | None = None,

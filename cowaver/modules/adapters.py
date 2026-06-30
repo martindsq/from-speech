@@ -38,6 +38,48 @@ class PointwiseTemporalAdapter(nn.Module):
         z = self.proj(h)
         return z
 
+
+class ResidualPointwiseTemporalAdapter(nn.Module):
+    """Project each temporal position with a direct path plus learned
+    correction."""
+
+    def __init__(self, input_dim: int = 512, latent_dim: int = 256, **_):
+        super().__init__()
+        self.skip = (
+            nn.Identity()
+            if input_dim == latent_dim
+            else nn.Linear(input_dim, latent_dim, bias=False)
+        )
+        self.delta = nn.Sequential(
+            nn.Linear(input_dim, latent_dim),
+            nn.LayerNorm(latent_dim),
+            nn.GELU(),
+            nn.Linear(latent_dim, latent_dim),
+        )
+        self.norm = nn.LayerNorm(latent_dim)
+
+        nn.init.zeros_(self.delta[-1].weight)
+        nn.init.zeros_(self.delta[-1].bias)
+
+    def forward(self, h: Tensor) -> Tensor:
+        """Project a visual sequence without mixing temporal positions.
+
+        Parameters
+        ----------
+        h:
+            Tensor of shape `[B, 7, input_dim]`.
+
+        Returns
+        -------
+        z: Tensor
+            Tensor of shape `[B, 7, latent_dim]`.
+        """
+        if h.dim() == 2:
+            h = h.unsqueeze(0)
+        z = self.skip(h) + self.delta(h)
+        return self.norm(z)
+
+
 class ConvolutionalTemporalAdapter(nn.Module):
     """Project and mix neighboring temporal positions into the latent space.
 
@@ -83,6 +125,7 @@ class ConvolutionalTemporalAdapter(nn.Module):
 
 ADAPTER_REGISTRY = {
     "pointwise": PointwiseTemporalAdapter,
+    "respointwise": ResidualPointwiseTemporalAdapter,
     "convolutional": ConvolutionalTemporalAdapter
 }
 
