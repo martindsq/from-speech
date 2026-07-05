@@ -15,6 +15,10 @@ class AvgPooledITEncoder(nn.Module):
         for param in self.cornet_z.parameters():
             param.requires_grad = False
 
+        for param in self.cornet_z.module.IT.parameters():
+            param.requires_grad = True
+
+
     def forward(self, x):
         """Average-pool the native CORnet IT map into a horizontal sequence.
 

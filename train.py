@@ -3,6 +3,8 @@ from pathlib import Path
 from time import perf_counter
 
 from cowaver.datamodules import TinyMel, MixedTinyMel
+from cowaver.checkpoints import cargar_checkpoint
+from cowaver.datasets import TinySpeakDataset
 from cowaver.modules import ADAPTER_REGISTRY, ARCHITECTURE_REGISTRY, DECODER_REGISTRY, CoWaver, build_model
 from cowaver.models import TrainProgramme
 from cowaver.transforms import RandomPosition
@@ -64,6 +66,12 @@ parser.add_argument(
     help="Hidden size used by decoder modules."
 )
 parser.add_argument(
+    "--mel-bins",
+    type=int,
+    default=100,
+    help="Number of Mel bands used by the training target.",
+)
+parser.add_argument(
     "--theta-max",
     type=int,
     default=20,
@@ -80,6 +88,11 @@ parser.add_argument(
     type=float,
     default=0,
     help="Weight of the auxiliary CTC loss. Use 0 to disable it."
+)
+parser.add_argument(
+    "--condition-speaker",
+    action="store_true",
+    help="Condition the decoder on speaker IDs from the dataset.",
 )
 parser.add_argument(
     "--epsilon-zero",
@@ -129,6 +142,13 @@ parser.add_argument(
     metavar=("LETTERS", "PHONES", "WORDS"),
     help="Sampling proportions for letters, phones, and words in phase 3.",
 )
+parser.add_argument(
+    "--phase",
+    type=int,
+    choices=(1, 2, 3),
+    default=1,
+    help="Curriculum phase to train. Phases greater than 1 load the previous phase checkpoint first.",
+)
 args = parser.parse_args()
 if any(
     proportion < 0
@@ -143,6 +163,13 @@ if not phase1_enabled:
     parser.error("--phase1must be non-zero")
 if phase3_enabled and not phase2_enabled:
     parser.error("--phase3 requires --phase2 to be non-zero")
+selected_phase_enabled = {
+    1: phase1_enabled,
+    2: phase2_enabled,
+    3: phase3_enabled,
+}[args.phase]
+if not selected_phase_enabled:
+    parser.error(f"--phase{args.phase} must be non-zero to train phase {args.phase}")
 num_phases = 1 + int(phase2_enabled) + int(phase3_enabled)
 if args.theta_max <= 0:
     parser.error("--theta-max must be positive")
@@ -152,6 +179,8 @@ if args.max_classes < 2:
     parser.error("--max-classes must be at least 2")
 if args.ctc_weight < 0:
     parser.error("--ctc-weight must be non-negative")
+if args.mel_bins <= 0:
+    parser.error("--mel-bins must be positive")
 if args.epsilon_zero <= 0:
     parser.error("--epsilon-zero must be positive")
 if args.theta <= 0:
@@ -160,6 +189,8 @@ if args.theta > args.theta_max:
     parser.error("--theta must be less than or equal to --theta-max")
 if args.epsilon_theta <= 0 or args.epsilon_theta > args.epsilon_zero:
     parser.error("--epsilon-theta must be in the range (0, epsilon-zero]")
+if args.phase > 1 and args.checkpoints is None:
+    parser.error("--phase greater than 1 requires --checkpoints to load the previous phase")
 
 data_path = Path(args.data)
 checkpoints_path = None
@@ -174,15 +205,18 @@ print("--adapter", args.adapter)
 print("--decoder", args.decoder)
 print("--latent-dim", args.latent_dim)
 print("--hidden-size", args.hidden_size)
+print("--mel-bins", args.mel_bins)
 print("--theta-max", args.theta_max)
 print("--max-classes", args.max_classes)
 print("--ctc-weight", args.ctc_weight)
+print("--condition-speaker", args.condition_speaker)
 print("--epsilon-zero", args.epsilon_zero)
 print("--theta", args.theta)
 print("--epsilon-theta", args.epsilon_theta)
 print("--phase1", args.phase1)
 print("--phase2", args.phase2)
 print("--phase3", args.phase3)
+print("--phase", args.phase)
 print("--phase1-enabled", phase1_enabled)
 print("--phase2-enabled", phase2_enabled)
 print("--phase3-enabled", phase3_enabled)
@@ -231,6 +265,14 @@ char_to_idx = construir_vocabulario_caracteres([
 ctc_vocab_size = len(char_to_idx) + 1
 print("--ctc-vocab-size", ctc_vocab_size)
 
+speaker_names = sorted(set().union(
+    TinySpeakDataset.collect_speakers_from_splits(tiny_letter_path, letter_classes),
+#    TinySpeakDataset.collect_speakers_from_splits(tiny_phones_path, phone_classes),
+#    TinySpeakDataset.collect_speakers_from_splits(tiny_mswc_path, word_classes),
+))
+num_speakers = len(speaker_names) if args.condition_speaker else 0
+print("--num-speakers", num_speakers)
+
 def make_phase_data(letters: TinyMel, phones: TinyMel, words: TinyMel, proportions: list[float]):
     """Construye el datamodule de una fase a partir de sus proporciones activas."""
     datamodules = [letters, phones, words]
@@ -267,9 +309,10 @@ def train_cowaver(cowaver: CoWaver):
     letters = TinyMel(
         base_dir=tiny_letter_path,
         mel_bins=cowaver.mel_bins,
-        position=RandomPosition(center=0.5, spread=0.5, axis="x"),
         task_id=1,
+        position=RandomPosition(center=0.5, spread=0.5, axis="x"),
         classes=letter_classes,
+        speakers=speaker_names if args.condition_speaker else None,
         char_to_idx=char_to_idx,
     )
     phones_train = TinyMel(
@@ -277,6 +320,7 @@ def train_cowaver(cowaver: CoWaver):
         mel_bins=cowaver.mel_bins,
         task_id=1,
         classes=phone_train_classes,
+        speakers=None,
         char_to_idx=char_to_idx,
     )
     words_train = TinyMel(
@@ -284,44 +328,44 @@ def train_cowaver(cowaver: CoWaver):
         mel_bins=cowaver.mel_bins,
         task_id=2,
         classes=word_train_classes,
+        speakers=None,
         char_to_idx=char_to_idx,
     )
-    phase1_data = make_phase_data(
+    phase_proportions = {
+        1: args.phase1,
+        2: args.phase2,
+        3: args.phase3,
+    }
+    phase_data = make_phase_data(
         letters,
         phones_train,
         words_train,
-        args.phase1
+        phase_proportions[args.phase],
     )
-    train_phase(cowaver, phase1_data, phase=1)
-    if phase2_enabled:
-        phase2_data = make_phase_data(
-            letters,
-            phones_train,
-            words_train,
-            args.phase2
+    if args.phase > 1:
+        checkpoint_phase = args.phase - 1
+        print(f"Cargando checkpoint de fase {checkpoint_phase}")
+        cargar_checkpoint(
+            net=cowaver,
+            device=dispositivo,
+            phase=checkpoint_phase,
+            folder=checkpoints_path,
         )
-        train_phase(cowaver, phase2_data, phase=2)
-    if phase3_enabled:
-        phase3_data = make_phase_data(
-            letters,
-            phones_train,
-            words_train,
-            args.phase3
-        )
-        train_phase(cowaver, phase3_data, phase=3)
+    train_phase(cowaver, phase_data, phase=args.phase)
 
 model_kwargs = {
     "latent_dim": args.latent_dim,
     "hidden_size": args.hidden_size,
-    "mel_bins": 80,
+    "mel_bins": args.mel_bins,
     "seq_len": 49,
     "decoder": args.decoder,
     "adapter": args.adapter,
     "ctc_vocab_size": ctc_vocab_size,
     "ctc_weight": args.ctc_weight,
+    "num_speakers": num_speakers,
 }
 train_cowaver(build_model(args.architecture, **model_kwargs))
 
-borrar_carpeta(tiny_letter_path)
-borrar_carpeta(tiny_phones_path)
-borrar_carpeta(tiny_mswc_path)
+#borrar_carpeta(tiny_letter_path)
+#borrar_carpeta(tiny_phones_path)
+#borrar_carpeta(tiny_mswc_path)

@@ -41,15 +41,19 @@ class TinyMel(DataModule):
         position: RandomPosition | None = None,
         task_id: int = 1,
         classes: list[str] | None = None,
+        speakers: list[str] | None = None,
     ):
         batch_size = 32
         self.task_id = task_id
         self.char_to_idx = char_to_idx
+        if speakers is None:
+            speakers = TinySpeakDataset.collect_speakers_from_splits(base_dir, classes)
         train_full_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
                 base_dir / "train",
                 transform=transform,
                 classes=classes,
+                speakers=speakers,
             ),
             char_to_idx=char_to_idx,
             position=position,
@@ -60,6 +64,7 @@ class TinyMel(DataModule):
             base_dataset=TinySpeakDataset(
                 base_dir / "train",
                 classes=classes,
+                speakers=speakers,
             ),
             char_to_idx=char_to_idx,
             mel_bins=mel_bins,
@@ -69,6 +74,7 @@ class TinyMel(DataModule):
             base_dataset=TinySpeakDataset(
                 base_dir / "test",
                 classes=classes,
+                speakers=speakers,
             ),
             char_to_idx=char_to_idx,
             mel_bins=mel_bins,
@@ -87,11 +93,13 @@ class TinyMel(DataModule):
         
         super().__init__(batch_size, train_set, val_set, test_set)
         self._mel_prototypes = None
+        self._speakers = train_full_set.speakers
 
     @staticmethod
     def _stratified_split_indices(samples, train_ratio: float, generator: torch.Generator):
         indices_by_label = {}
-        for index, (_, label) in enumerate(samples):
+        for index, sample in enumerate(samples):
+            label = sample[1]
             indices_by_label.setdefault(label, []).append(index)
 
         train_indices = []
@@ -113,6 +121,14 @@ class TinyMel(DataModule):
     @property
     def classes(self):
         return self.test_set.classes
+
+    @property
+    def speakers(self):
+        return self._speakers
+
+    @property
+    def num_speakers(self):
+        return len(self._speakers)
 
     def elements_from_batch(self, batch):
         (images, mels) = batch[0]
@@ -167,8 +183,8 @@ class FilteredTinyMel(DataModule):
         }
         indices = [
             index
-            for index, (_, label) in enumerate(source.test_set.base_dataset.samples)
-            if label in test_labels
+            for index, sample in enumerate(source.test_set.base_dataset.samples)
+            if sample[1] in test_labels
         ]
         if len(indices) == 0:
             raise ValueError("filtered test set is empty.")
@@ -184,6 +200,14 @@ class FilteredTinyMel(DataModule):
     @property
     def classes(self):
         return self.source.classes
+
+    @property
+    def speakers(self):
+        return self.source.speakers
+
+    @property
+    def num_speakers(self):
+        return self.source.num_speakers
 
     def elements_from_batch(self, batch):
         return self.source.elements_from_batch(batch)
@@ -237,16 +261,26 @@ class MixedTinyMel(DataModule):
                 classes[offset + label] = f"{name}:{class_name}"
             offset += len(data.classes)
 
+        speaker_names = sorted({
+            speaker_name
+            for data in datamodules
+            for speaker_name in data.speakers.values()
+        })
+        speaker_to_idx = {
+            speaker_name: speaker_id
+            for speaker_id, speaker_name in enumerate(speaker_names)
+        }
+
         train_sets = [
-            RelabeledDataset(data.train_set, label_offset)
+            RelabeledDataset(data.train_set, label_offset, speaker_to_idx)
             for data, label_offset in zip(datamodules, label_offsets)
         ]
         val_sets = [
-            RelabeledDataset(data.val_set, label_offset)
+            RelabeledDataset(data.val_set, label_offset, speaker_to_idx)
             for data, label_offset in zip(datamodules, label_offsets)
         ]
         test_sets = [
-            RelabeledDataset(data.test_set, label_offset)
+            RelabeledDataset(data.test_set, label_offset, speaker_to_idx)
             for data, label_offset in zip(datamodules, label_offsets)
         ]
 
@@ -254,6 +288,10 @@ class MixedTinyMel(DataModule):
         self.datamodules = datamodules
         self.proportions = proportions
         self._classes = classes
+        self._speakers = {
+            speaker_id: speaker_name
+            for speaker_name, speaker_id in speaker_to_idx.items()
+        }
         self._mel_prototypes = None
 
         super().__init__(
@@ -266,6 +304,14 @@ class MixedTinyMel(DataModule):
     @property
     def classes(self):
         return self._classes
+
+    @property
+    def speakers(self):
+        return self._speakers
+
+    @property
+    def num_speakers(self):
+        return len(self._speakers)
 
     def elements_from_batch(self, batch):
         (images, mels) = batch[0]

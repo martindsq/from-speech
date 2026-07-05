@@ -27,7 +27,9 @@ class ConvolutionalMelDecoder(nn.Module):
     ):
         super().__init__()
         self.seq_len = seq_len
-        self.queries = nn.Parameter(torch.randn(seq_len, latent_dim) * 0.02)
+        self.query_base = nn.Parameter(torch.randn(1, 1, hidden_size) * 0.02)
+        self.query_delta = nn.Parameter(torch.randn(1, seq_len, hidden_size) * 0.002)
+        # self.queries = nn.Parameter(torch.randn(seq_len, latent_dim) * 0.02)
         self.attention = nn.MultiheadAttention(
             embed_dim=latent_dim,
             num_heads=2,
@@ -60,7 +62,9 @@ class ConvolutionalMelDecoder(nn.Module):
         if z.dim() == 2:
             z = z.unsqueeze(0)
         B = z.size(0)
-        q = self.queries.unsqueeze(0).expand(B, -1, -1)
+        # q = self.queries.unsqueeze(0).expand(B, -1, -1)
+        q = self.query_base + torch.cumsum(self.query_delta, dim=1)
+        q = q.expand(B, -1, -1)
         x, _ = self.attention(
             query=q,
             key=z,
@@ -99,14 +103,23 @@ class RecurrentMelDecoder(nn.Module):
             num_heads=2,
             batch_first=True
         )
-        self.attention_norm = nn.LayerNorm(latent_dim)
+        self.ffn = nn.Sequential(
+            nn.Linear(latent_dim, latent_dim),
+            nn.GELU(),
+            nn.Linear(latent_dim, latent_dim),
+        )
         self.rnn = nn.GRU(
             input_size=latent_dim,
-            hidden_size=hidden_size,
-            num_layers=1,
+            hidden_size=mel_bins,
+            num_layers=2,
             batch_first=True
         )
-        self.out_proj = nn.Linear(hidden_size, mel_bins)
+        #self.out_proj = nn.Sequential(
+        #    nn.Linear(hidden_size, mel_bins)
+        #)
+        self.refiner = nn.Sequential(
+            nn.Conv1d(mel_bins, mel_bins, kernel_size=3, padding=1),
+        )
 
     def forward(self, z: Tensor):
         """Convert a latent sequence into a Mel spectrogram.
@@ -131,14 +144,169 @@ class RecurrentMelDecoder(nn.Module):
             value=z,
             need_weights=False
         )
-        x = self.attention_norm(q + x)
+        x = x + self.ffn(x) 
         x, _ = self.rnn(x)
-        mel = self.out_proj(x).transpose(1, 2)
+        mel = x.transpose(1, 2)#self.out_proj(x).transpose(1, 2)
+        mel = mel + self.refiner(mel)
+        return mel
+
+class MultiHeadAttentionMelDecoder(nn.Module):
+    def __init__(
+        self,
+        latent_dim: int = 256,
+        hidden_size: int = 256,
+        mel_bins: int = 100,
+        seq_len: int = 49
+    ):
+        super().__init__()
+
+        self.seq_len = seq_len
+        self.mel_bins = mel_bins
+        self.hidden_size = hidden_size
+        # self.input_proj = nn.Linear(latent_dim, hidden_size)
+        self.letter_pos = nn.Parameter(torch.randn(1, 7, latent_dim) * 0.02)
+        self.time_queries = nn.Parameter(torch.randn(1, seq_len, latent_dim) * 0.02)
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=latent_dim,
+            num_heads=1,
+            batch_first=True,
+        )
+        self.norm1 = nn.LayerNorm(latent_dim)
+        self.norm2 = nn.LayerNorm(latent_dim)
+        self.ffn = nn.Sequential(
+            nn.Linear(latent_dim, latent_dim),
+            nn.GELU(),
+            nn.Linear(latent_dim, latent_dim),
+        )
+        self.rnn = nn.GRU(
+            input_size=latent_dim,
+            hidden_size=hidden_size,
+            num_layers=1,
+            batch_first=True,
+            bidirectional=False
+        )
+        self.to_mel = nn.Sequential(
+            nn.Linear(hidden_size, mel_bins),
+        )
+        self.refiner = nn.Sequential(
+            nn.Conv1d(mel_bins, mel_bins, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Conv1d(mel_bins, mel_bins, kernel_size=3, padding=1),
+        )
+        nn.init.zeros_(self.refiner[-1].weight)
+        nn.init.zeros_(self.refiner[-1].bias)
+
+    def forward(self, z: Tensor):
+        """Convert a latent sequence into a Mel spectrogram.
+
+        Parameters
+        ----------
+        z:
+            Tensor of shape `[B, 7, latent_dim]`.
+
+        Returns
+        -------
+        mel: Tensor
+            Tensor of shape `[B, mel_bins, seq_len]`.
+        """
+        if z.dim() == 2:
+            z = z.unsqueeze(0)
+        B = z.size(0)
+        
+        letters = z + self.letter_pos[:, :z.size(1)]
+        queries = self.time_queries.expand(B, -1, -1)
+        x, _ = self.cross_attn(
+            query=queries,
+            key=letters,
+            value=letters,
+            need_weights=False
+        )
+        x = self.norm1(queries + x)
+        x = self.norm2(x + self.ffn(x))
+        x, _ = self.rnn(x)          # (B, seq_len, hidden_size)
+        mel = self.to_mel(x)
+        mel = mel.transpose(1, 2)     # (B, mel_bins, seq_len)
+        mel = mel + self.refiner(mel)
+        return mel
+
+class RecurrentMLPDecoder(nn.Module):
+    def __init__(
+        self,
+        latent_dim: int = 256,
+        hidden_size: int = 256,
+        mel_bins: int = 100,
+        seq_len: int = 49,
+    ):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.mel_bins = mel_bins
+        self.seq_len = seq_len
+        self.proj = nn.Sequential(
+            nn.Linear(latent_dim * 7, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size * seq_len),
+        )
+        self.rnn = nn.GRU(
+            input_size=hidden_size,
+            hidden_size=mel_bins,
+            num_layers=2,
+            batch_first=True
+        )
+        self.refiner = nn.Sequential(
+            nn.Conv1d(mel_bins, mel_bins, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Conv1d(mel_bins, mel_bins, kernel_size=3, padding=1),
+        )
+
+    def forward(self, z: Tensor) -> Tensor:
+        if z.dim() == 2:
+            z = z.unsqueeze(0)
+        B = z.size(0)
+        x = z.flatten(start_dim=1)
+        x = self.proj(x).view(B, self.seq_len, self.hidden_size)
+        x, _ = self.rnn(x)
+        mel = x.transpose(1, 2)
+        mel = mel + self.refiner(mel)
+        return mel
+
+class MLPDecoder(nn.Module):
+    def __init__(
+        self,
+        latent_dim: int = 256,
+        hidden_size: int = 512,
+        mel_bins: int = 40,
+        seq_len: int = 49,
+    ):
+        super().__init__()
+
+        self.mel_bins = mel_bins
+        self.seq_len = seq_len
+        latent_len = 7
+
+        self.output = nn.Sequential(
+            nn.Linear(latent_dim * latent_len, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, mel_bins * seq_len),
+        )
+
+    def forward(self, z: Tensor) -> Tensor:
+        if z.dim() == 2:
+            z = z.unsqueeze(0)
+
+        batch_size = z.size(0)
+
+        x = z.flatten(start_dim=1)
+        mel = self.output(x)
+        mel = mel.view(batch_size, self.mel_bins, self.seq_len)
+
         return mel
 
 DECODER_REGISTRY = {
     "convolutional": ConvolutionalMelDecoder,
-    "recurrent": RecurrentMelDecoder
+    "recurrent": RecurrentMelDecoder,
+    "mlp": MLPDecoder,
+    "rmlp": RecurrentMLPDecoder,
+    "attn": MultiHeadAttentionMelDecoder
 }
 
 

@@ -5,8 +5,11 @@ from torch import Tensor
 
 
 def unpack_batch(batch):
-    (x, y), labels, task_ids, ctc_targets, ctc_lengths = batch
-    return x, y.squeeze(1), labels, task_ids, ctc_targets, ctc_lengths
+    if len(batch) == 5:
+        (x, y), labels, task_ids, ctc_targets, ctc_lengths = batch
+        return x, y.squeeze(1), labels, task_ids, None, None, ctc_targets, ctc_lengths
+    (x, y), labels, task_ids, speaker_ids, speaker_names, ctc_targets, ctc_lengths = batch
+    return x, y.squeeze(1), labels, task_ids, speaker_ids, speaker_names, ctc_targets, ctc_lengths
 
 
 class CTCHead(nn.Module):

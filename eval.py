@@ -1,8 +1,8 @@
 import argparse
 from pathlib import Path
 from cowaver.datamodules import FilteredTinyMel, TinyMel
+from cowaver.datasets import TinySpeakDataset
 from cowaver.modules import ADAPTER_REGISTRY, ARCHITECTURE_REGISTRY, DECODER_REGISTRY, CoWaver, build_model
-from cowaver.transforms import RandomAlign, RandomScene
 from cowaver.utils import (
     descomprimir_archivo,
     encontrar_dispositivo,
@@ -36,13 +36,22 @@ parser.add_argument(
 )
 parser.add_argument("--latent-dim", type=int, default=256)
 parser.add_argument("--hidden-size", type=int, default=256)
+parser.add_argument("--mel-bins", type=int, default=100)
 parser.add_argument("--max-classes", type=int, default=50)
 parser.add_argument("--ctc-weight", type=float, default=0.0)
+parser.add_argument("--condition-speaker", action="store_true")
+parser.add_argument(
+    "--cleanup-data",
+    action="store_true",
+    help="Delete decompressed dataset folders after evaluation.",
+)
 args = parser.parse_args()
 if args.max_classes < 2:
     parser.error("--max-classes must be at least 2")
 if args.ctc_weight < 0:
     parser.error("--ctc-weight must be non-negative")
+if args.mel_bins <= 0:
+    parser.error("--mel-bins must be positive")
 data_path = Path(args.data)
 checkpoints_path = Path(args.checkpoints)
 data_path.mkdir(parents=True, exist_ok=True)
@@ -54,8 +63,11 @@ print("--adapter", args.adapter)
 print("--decoder", args.decoder)
 print("--latent-dim", args.latent_dim)
 print("--hidden-size", args.hidden_size)
+print("--mel-bins", args.mel_bins)
 print("--max-classes", args.max_classes)
 print("--ctc-weight", args.ctc_weight)
+print("--condition-speaker", args.condition_speaker)
+print("--cleanup-data", args.cleanup_data)
 
 tiny_letter_xz_path = Path("tiny-letter-30.tar.xz")
 tiny_phones_xz_path = Path("tiny-phones-500.tar.xz")
@@ -88,6 +100,14 @@ char_to_idx = construir_vocabulario_caracteres([
 ctc_vocab_size = len(char_to_idx) + 1
 print("--ctc-vocab-size", ctc_vocab_size)
 
+speaker_names = sorted(set().union(
+    TinySpeakDataset.collect_speakers_from_splits(tiny_letter_path, letter_classes),
+#    TinySpeakDataset.collect_speakers_from_splits(tiny_phones_path, phone_classes),
+#    TinySpeakDataset.collect_speakers_from_splits(tiny_mswc_path, word_classes),
+))
+num_speakers = len(speaker_names) if args.condition_speaker else 0
+print("--num-speakers", num_speakers)
+
 def eval_cowaver(
     cowaver: CoWaver,
     letters: TinyMel,
@@ -114,6 +134,7 @@ def load_cowaver(cowaver: CoWaver):
         mel_bins=cowaver.mel_bins,
         task_id=1,
         classes=letter_classes,
+        speakers=speaker_names if args.condition_speaker else None,
     )
     phones_train = TinyMel(
         base_dir=tiny_phones_path,
@@ -121,6 +142,7 @@ def load_cowaver(cowaver: CoWaver):
         mel_bins=cowaver.mel_bins,
         task_id=1,
         classes=phone_train_classes,
+        speakers=None,
     )
     phones_all = TinyMel(
         base_dir=tiny_phones_path,
@@ -128,6 +150,7 @@ def load_cowaver(cowaver: CoWaver):
         mel_bins=cowaver.mel_bins,
         task_id=1,
         classes=phone_classes,
+        speakers=None,
     )
     phones_test = FilteredTinyMel(phones_all, phone_test_classes)
     words_train = TinyMel(
@@ -136,6 +159,7 @@ def load_cowaver(cowaver: CoWaver):
         mel_bins=cowaver.mel_bins,
         task_id=2,
         classes=word_train_classes,
+        speakers=None,
     )
     words_all = TinyMel(
         base_dir=tiny_mswc_path,
@@ -143,6 +167,7 @@ def load_cowaver(cowaver: CoWaver):
         mel_bins=cowaver.mel_bins,
         task_id=2,
         classes=word_classes,
+        speakers=None,
     )
     words_test = FilteredTinyMel(words_all, word_test_classes)
     phases = fases_disponibles(cowaver, checkpoints_path)
@@ -155,15 +180,17 @@ def load_cowaver(cowaver: CoWaver):
 model_kwargs = {
     "latent_dim": args.latent_dim,
     "hidden_size": args.hidden_size,
-    "mel_bins": 80,
+    "mel_bins": args.mel_bins,
     "seq_len": 49,
     "adapter": args.adapter,
     "decoder": args.decoder,
     "ctc_vocab_size": ctc_vocab_size,
-    "ctc_weight": args.ctc_weight
+    "ctc_weight": args.ctc_weight,
+    "num_speakers": num_speakers,
 }
 load_cowaver(build_model(args.architecture, **model_kwargs))
 
-borrar_carpeta(tiny_letter_path)
-borrar_carpeta(tiny_phones_path)
-borrar_carpeta(tiny_mswc_path)
+if args.cleanup_data:
+    borrar_carpeta(tiny_letter_path)
+    borrar_carpeta(tiny_phones_path)
+    borrar_carpeta(tiny_mswc_path)

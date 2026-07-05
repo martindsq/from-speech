@@ -18,6 +18,9 @@ from .checkpoints import imprimir_encabezado, guardar_checkpoint
 from .models import DataModule, TestResults, TrainHistory, TrainProgramme, TrainableModule
 
 AUDIO_SAMPLE_RATE = 16_000
+N_FFT = 1024 # 2048
+HOP_LENGTH = int(round(AUDIO_SAMPLE_RATE / 49))
+WIN_LENGTH = 800
 FONT_PATH = font_manager.findfont("DejaVu Sans Mono")
 REEMPLAZOS_ACENTOS = str.maketrans({
     "á": "a",
@@ -285,24 +288,20 @@ def extract_mel(waveform: Tensor, mel_bins: int = 80):
     """
     if waveform.dim() == 1:
         waveform = waveform.unsqueeze(0)
-
-    n_fft = 2048
-    wav2vec_hz = 49
-    hop_length = int(round(AUDIO_SAMPLE_RATE / wav2vec_hz))
-
-    # Create MelSpectrogram transform
     mel_transform = MelSpectrogram(
         sample_rate=AUDIO_SAMPLE_RATE,
-        n_fft=n_fft,
-        hop_length=hop_length,
+        n_fft=N_FFT,
+        win_length=WIN_LENGTH,
+        hop_length=HOP_LENGTH,
         n_mels=mel_bins,
         f_min=0.0,
-        f_max=AUDIO_SAMPLE_RATE / 2
+        f_max=AUDIO_SAMPLE_RATE / 2,
+        power=2.0,
+        center=True,
+        norm=None,
+        mel_scale="htk"
     ).to(waveform.device)
-
-    # Torchaudio expects [channels, time], so we treat batch as "channels"
-    mel = mel_transform(waveform)  # [B, n_mels, time_frames]
-
+    mel = mel_transform(waveform) 
     return torch.log1p(mel)
 
 def extraer_waveform(mel: Tensor):
@@ -311,7 +310,7 @@ def extraer_waveform(mel: Tensor):
     Parameters
     ----------
     mel: Tensor
-        Tensor de forma [B, mel_bins, T] donde T el número de frames temporales.
+        Tensor de forma [B, n_mels, T] donde T el número de frames temporales.
 
     Returns
     -------
@@ -321,32 +320,26 @@ def extraer_waveform(mel: Tensor):
 
     if mel.dim() == 2:
         mel = mel.unsqueeze(0)
-
     mel = torch.expm1(mel).clamp_min(0)
-
-    n_fft = 2048
-    hop_length = int(round(AUDIO_SAMPLE_RATE / 49))
-
-    n_mels = mel.size(-2)
-
     inverse_mel = InverseMelScale(
-        n_stft=n_fft // 2 + 1,
-        n_mels=n_mels,
+        n_stft=N_FFT // 2 + 1,
+        n_mels=mel.size(-2),
         sample_rate=AUDIO_SAMPLE_RATE,
         f_min=0.0,
         f_max=AUDIO_SAMPLE_RATE / 2,
+        norm=None,
+        mel_scale="htk"
     ).to(mel.device)
-
     griffin_lim = GriffinLim(
-        n_fft=n_fft,
-        hop_length=hop_length,
+        n_fft=N_FFT,
+        win_length=WIN_LENGTH,
+        hop_length=HOP_LENGTH,
         power=2.0,
         n_iter=64,
+        length=AUDIO_SAMPLE_RATE
     ).to(mel.device)
-
     spectrogram = inverse_mel(mel)
     waveform = griffin_lim(spectrogram)
-
     return waveform
 
 def clip_waveform(waveform: Tensor, duration: float = 1.0):
@@ -374,7 +367,7 @@ def clip_waveform(waveform: Tensor, duration: float = 1.0):
     else:
         return F.pad(waveform, (0, target_len - L))
 
-def make_image(word: str, x_stride: float = 0.5, y_stride: float = 0.5):
+def make_image(word: str, x_stride: float = 0, y_stride: float = 0.5):
     """Construye una imagen con una palabra dada.
 
     Parameters
@@ -394,27 +387,54 @@ def make_image(word: str, x_stride: float = 0.5, y_stride: float = 0.5):
     """
     W = 224
     H = 224
+    """Construye una imagen y ubica el texto en una grilla discreta."""
+
+    W = 224
+    H = 224
+    n_cells = 7
+
     word = unicodedata.normalize("NFC", word)
 
     img = Image.new("RGB", (W, H), color="white")
     draw = ImageDraw.Draw(img)
 
-    font = ImageFont.truetype(FONT_PATH, size=60)
+    font = ImageFont.truetype(FONT_PATH, size=53)
 
     bbox = draw.textbbox((0, 0), word, font=font)
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
 
-    # horizontal
-    x_pos = int(x_stride * (W - text_w)) - bbox[0]
+    # Convertir los strides continuos en índices discretos: 0, ..., 6
+    x_cell = min(int(x_stride * n_cells), n_cells - 1)
+    y_cell = min(int(y_stride * n_cells), n_cells - 1)
 
-    # vertical
-    y_pos = int(y_stride * (H - text_h)) - bbox[1]
+    cell_w = W / n_cells
+    cell_h = H / n_cells
 
-    draw.text((x_pos, y_pos), word, fill="black", font=font)
+    # Límites izquierdos/superiores de la celda seleccionada
+    cell_x = x_cell * cell_w
+    cell_y = y_cell * cell_h
 
-    x = ToTensor()(img)
-    return x
+    # Centro del cubículo elegido
+    cell_center_x = (x_cell + 0.5) * cell_w
+    cell_center_y = (y_cell + 0.5) * cell_h
+    
+    # Posición ideal, centrada en el cubículo
+    x_pos = cell_center_x - text_w / 2 - bbox[0]
+    y_pos = cell_center_y - text_h / 2 - bbox[1]
+    
+    # Evitar que el texto salga de la imagen
+    x_pos = max(-bbox[0], min(x_pos, W - text_w - bbox[0]))
+    y_pos = max(-bbox[1], min(y_pos, H - text_h - bbox[1]))
+
+    draw.text(
+        (round(x_pos), round(y_pos)),
+        word,
+        fill="black",
+        font=font,
+    )
+
+    return ToTensor()(img) 
 
 def entrenar_red(net: TrainableModule, data: DataModule, programme: TrainProgramme, phase: int = 1, dispositivo: device | None = None, checkpoints_folder: Path | None = None) -> TrainHistory:
     if dispositivo is None:
