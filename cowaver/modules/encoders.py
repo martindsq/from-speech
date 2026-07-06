@@ -16,7 +16,7 @@ class AvgPooledITEncoder(nn.Module):
             param.requires_grad = False
 
         for param in self.cornet_z.module.IT.parameters():
-            param.requires_grad = True
+            param.requires_grad = False
 
 
     def forward(self, x):

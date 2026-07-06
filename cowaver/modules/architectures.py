@@ -94,11 +94,11 @@ class CoWaver(TrainableModule):
         ctc_targets: Tensor,
         ctc_lengths: Tensor,
     ) -> Tensor:
-        mel_loss = F.l1_loss(y_hat, y)
+        loss = F.l1_loss(y_hat, y)
         if self.ctc_weight == 0:
-            return mel_loss
+            return loss
         ctc_loss = self.ctc_head.training_loss(ctc_z, ctc_targets, ctc_lengths)
-        return mel_loss + self.ctc_weight * ctc_loss
+        return loss + self.ctc_weight * ctc_loss
 
     def test_step(self, data: DataModule, batch: tuple) -> TestResults:
         x, _, targets, task_ids, speaker_ids, _, _, _ = unpack_batch(batch)
