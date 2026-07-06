@@ -165,6 +165,12 @@ class MultiHeadAttentionMelDecoder(nn.Module):
         self.hidden_size = hidden_size
         self.letter_pos = nn.Parameter(torch.randn(1, 7, latent_dim) * 0.02)
         self.time_queries = nn.Parameter(torch.randn(1, seq_len, latent_dim) * 0.02)
+
+        # Cabezal de "duracion articulatoria" por cada embedding
+        self.duration_head = nn.Linear(latent_dim, 1)
+        nn.init.zeros_(self.duration_head.weight)
+        nn.init.zeros_(self.duration_head.bias)
+
         self.cross_attn = nn.MultiheadAttention(
             embed_dim=latent_dim,
             num_heads=4,
@@ -198,6 +204,31 @@ class MultiHeadAttentionMelDecoder(nn.Module):
         nn.init.zeros_(self.refiner[-1].weight)
         nn.init.zeros_(self.refiner[-1].bias)
 
+    def _monotonic_bias(self, z: Tensor):
+        """
+
+        Parameters
+        ----------
+        z:
+            Tensor de forma `[B, 7, latent_dim]`.
+
+        Returns
+        -------
+        bias:
+            Tensor de forma `[B, seq_len, 7]` para sumar a la atención.
+        """
+        B, L, _ = z.shape
+        device = z.device
+        durations = F.softplus(self.duration_head(z)).squeeze(-1)
+        cum = torch.cumsum(durations, dim=1)
+        total = cum[:, -1:].clamp_min(1e-6)
+        centers = (cum - durations / 2) / total
+        t = torch.arange(self.seq_len, device=device).float() / self.seq_len
+        dist = (t.view(1, -1, 1) - centers.view(B, 1, L)) ** 2
+        align_sigma = 0.12
+        bias = -dist / (2 * align_sigma ** 2)
+        return bias
+
     def forward(self, z: Tensor):
         """Convert a latent sequence into a Mel spectrogram.
 
@@ -217,10 +248,15 @@ class MultiHeadAttentionMelDecoder(nn.Module):
         
         letters = z + self.letter_pos[:, :z.size(1)]
         queries = self.time_queries.expand(B, -1, -1)
+
+        bias = self._monotonic_bias(z)
+        bias = bias.repeat_interleave(self.cross_attn.num_heads, dim=0)
+
         x, _ = self.cross_attn(
             query=queries,
             key=letters,
             value=letters,
+            attn_mask=bias,
             need_weights=False
         )
         x = self.norm1(queries + x)
