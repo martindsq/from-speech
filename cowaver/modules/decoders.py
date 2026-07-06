@@ -163,13 +163,12 @@ class MultiHeadAttentionMelDecoder(nn.Module):
         self.seq_len = seq_len
         self.mel_bins = mel_bins
         self.hidden_size = hidden_size
-        # self.input_proj = nn.Linear(latent_dim, hidden_size)
         self.letter_pos = nn.Parameter(torch.randn(1, 7, latent_dim) * 0.02)
         self.time_queries = nn.Parameter(torch.randn(1, seq_len, latent_dim) * 0.02)
         self.cross_attn = nn.MultiheadAttention(
             embed_dim=latent_dim,
             num_heads=4,
-            batch_first=True,
+            batch_first=True
         )
         self.norm1 = nn.LayerNorm(latent_dim)
         self.norm2 = nn.LayerNorm(latent_dim)
@@ -186,7 +185,10 @@ class MultiHeadAttentionMelDecoder(nn.Module):
             bidirectional=False
         )
         self.to_mel = nn.Sequential(
-            nn.Linear(hidden_size, mel_bins),
+            nn.Linear(hidden_size, hidden_size * 2),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_size * 2, mel_bins)
         )
         self.refiner = nn.Sequential(
             nn.Conv1d(mel_bins, mel_bins, kernel_size=5, padding=2),
@@ -227,94 +229,6 @@ class MultiHeadAttentionMelDecoder(nn.Module):
         mel = self.to_mel(x)
         mel = mel.transpose(1, 2)     # (B, mel_bins, seq_len)
         mel = mel + self.refiner(mel)
-        return mel
-
-class MultiHeadAttentionMelDecoder(nn.Module):
-    def __init__(
-        self,
-        latent_dim: int = 256,
-        hidden_size: int = 256,
-        mel_bins: int = 100,
-        seq_len: int = 49,
-        num_blocks: int = 3,       # <- bloques de cross-attn apilados
-    ):
-        super().__init__()
-        self.seq_len = seq_len
-        self.mel_bins = mel_bins
-        self.hidden_size = hidden_size
-
-        self.letter_pos = nn.Parameter(torch.randn(1, 7, latent_dim) * 0.02)
-        self.time_queries = nn.Parameter(torch.randn(1, seq_len, latent_dim) * 0.02)
-
-        # (a) self-attention entre letras, para que se "vean" entre sí
-        self.letter_self_attn = nn.MultiheadAttention(
-            embed_dim=latent_dim, num_heads=4, batch_first=True
-        )
-        self.letter_norm = nn.LayerNorm(latent_dim)
-
-        # (b) N bloques de cross-attn, cada uno con su propia FFN
-        self.cross_attn_blocks = nn.ModuleList([
-            nn.MultiheadAttention(embed_dim=latent_dim, num_heads=4, batch_first=True)
-            for _ in range(num_blocks)
-        ])
-        self.norm1_blocks = nn.ModuleList([nn.LayerNorm(latent_dim) for _ in range(num_blocks)])
-        self.norm2_blocks = nn.ModuleList([nn.LayerNorm(latent_dim) for _ in range(num_blocks)])
-        self.ffn_blocks = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(latent_dim, latent_dim * 4),
-                nn.GELU(),
-                nn.Linear(latent_dim * 4, latent_dim),
-            ) for _ in range(num_blocks)
-        ])
-
-        self.rnn = nn.GRU(
-            input_size=latent_dim,
-            hidden_size=hidden_size,
-            num_layers=1,
-            batch_first=True,
-            bidirectional=True
-        )
-        self.rnn_proj = nn.Linear(hidden_size * 2, hidden_size)
-
-        self.to_mel = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size * 2),
-            nn.GELU(),
-            nn.Linear(hidden_size * 2, mel_bins)
-        )
-
-        self.refiner = nn.Sequential(
-            nn.Conv1d(mel_bins, mel_bins, kernel_size=5, padding=2),
-            nn.GELU(),
-            nn.Conv1d(mel_bins, mel_bins, kernel_size=5, padding=2),
-        )
-        nn.init.zeros_(self.refiner[-1].weight)
-        nn.init.zeros_(self.refiner[-1].bias)
-
-    def forward(self, z: Tensor, return_attn: bool = False):
-        if z.dim() == 2:
-            z = z.unsqueeze(0)
-        B, L, _ = z.shape
-
-        letters = z + self.letter_pos[:, :L]
-        sa, _ = self.letter_self_attn(letters, letters, letters, need_weights=False)
-        letters = self.letter_norm(letters + sa)
-
-        x = self.time_queries.expand(B, -1, -1)
-        for cross_attn, norm1, norm2, ffn in zip(
-            self.cross_attn_blocks, self.norm1_blocks, self.norm2_blocks, self.ffn_blocks
-        ):
-            attn_out, _ = cross_attn(
-                query=x, key=letters, value=letters,
-                need_weights=return_attn, average_attn_weights=True
-            )
-            x = norm1(x + attn_out)
-            x = norm2(x + ffn(x))
-
-        x, _ = self.rnn(x)
-        x = self.rnn_proj(x)
-        mel = self.to_mel(x).transpose(1, 2)
-        mel = mel + self.refiner(mel)
-
         return mel
 
 class RecurrentMLPDecoder(nn.Module):

@@ -4,7 +4,6 @@ from time import perf_counter
 
 from cowaver.datamodules import TinyMel, MixedTinyMel
 from cowaver.checkpoints import cargar_checkpoint
-from cowaver.datasets import TinySpeakDataset
 from cowaver.modules import ADAPTER_REGISTRY, ARCHITECTURE_REGISTRY, DECODER_REGISTRY, CoWaver, build_model
 from cowaver.models import TrainProgramme
 from cowaver.transforms import RandomPosition
@@ -13,7 +12,6 @@ from cowaver.utils import (
     encontrar_dispositivo,
     entrenar_red,
     borrar_carpeta,
-    construir_vocabulario_caracteres,
     listar_clases,
     seleccionar_clases,
     separar_clases,
@@ -22,8 +20,8 @@ from cowaver.utils import (
 parser = argparse.ArgumentParser(
     description=(
         "Train a CoWaver model on the tiny letter, phone, and word datasets "
-        "using a three-phase curriculum with configurable data proportions, "
-        "CTC auxiliary loss, and linear learning-rate decay."
+        "using a three-phase curriculum with configurable data proportions "
+        "and linear learning-rate decay."
     )
 )
 parser.add_argument(
@@ -82,17 +80,6 @@ parser.add_argument(
     type=int,
     default=50,
     help="Maximum number of word classes to include"
-)
-parser.add_argument(
-    "--ctc-weight",
-    type=float,
-    default=0,
-    help="Weight of the auxiliary CTC loss. Use 0 to disable it."
-)
-parser.add_argument(
-    "--condition-speaker",
-    action="store_true",
-    help="Condition the decoder on speaker IDs from the dataset.",
 )
 parser.add_argument(
     "--epsilon-zero",
@@ -177,8 +164,6 @@ if args.theta_max % num_phases != 0:
     parser.error(f"--theta-max must be divisible by {num_phases}")
 if args.max_classes < 2:
     parser.error("--max-classes must be at least 2")
-if args.ctc_weight < 0:
-    parser.error("--ctc-weight must be non-negative")
 if args.mel_bins <= 0:
     parser.error("--mel-bins must be positive")
 if args.epsilon_zero <= 0:
@@ -208,8 +193,6 @@ print("--hidden-size", args.hidden_size)
 print("--mel-bins", args.mel_bins)
 print("--theta-max", args.theta_max)
 print("--max-classes", args.max_classes)
-print("--ctc-weight", args.ctc_weight)
-print("--condition-speaker", args.condition_speaker)
 print("--epsilon-zero", args.epsilon_zero)
 print("--theta", args.theta)
 print("--epsilon-theta", args.epsilon_theta)
@@ -257,22 +240,6 @@ print("--word-train-classes", len(word_train_classes))
 print("--word-test-classes", len(word_test_classes))
 print("--word-test", word_test_classes)
 
-char_to_idx = construir_vocabulario_caracteres([
-    (tiny_letter_path, letter_classes),
-    (tiny_phones_path, phone_classes),
-    (tiny_mswc_path, word_classes),
-])
-ctc_vocab_size = len(char_to_idx) + 1
-print("--ctc-vocab-size", ctc_vocab_size)
-
-speaker_names = sorted(set().union(
-    TinySpeakDataset.collect_speakers_from_splits(tiny_letter_path, letter_classes),
-#    TinySpeakDataset.collect_speakers_from_splits(tiny_phones_path, phone_classes),
-#    TinySpeakDataset.collect_speakers_from_splits(tiny_mswc_path, word_classes),
-))
-num_speakers = len(speaker_names) if args.condition_speaker else 0
-print("--num-speakers", num_speakers)
-
 def make_phase_data(letters: TinyMel, phones: TinyMel, words: TinyMel, proportions: list[float]):
     """Construye el datamodule de una fase a partir de sus proporciones activas."""
     datamodules = [letters, phones, words]
@@ -312,24 +279,18 @@ def train_cowaver(cowaver: CoWaver):
         task_id=1,
         position=RandomPosition(center=0.5, spread=0.5, axis="x"),
         classes=letter_classes,
-        speakers=speaker_names if args.condition_speaker else None,
-        char_to_idx=char_to_idx,
     )
     phones_train = TinyMel(
         base_dir=tiny_phones_path,
         mel_bins=cowaver.mel_bins,
         task_id=1,
         classes=phone_train_classes,
-        speakers=None,
-        char_to_idx=char_to_idx,
     )
     words_train = TinyMel(
         base_dir=tiny_mswc_path,
         mel_bins=cowaver.mel_bins,
         task_id=2,
         classes=word_train_classes,
-        speakers=None,
-        char_to_idx=char_to_idx,
     )
     phase_proportions = {
         1: args.phase1,
@@ -360,9 +321,6 @@ model_kwargs = {
     "seq_len": 49,
     "decoder": args.decoder,
     "adapter": args.adapter,
-    "ctc_vocab_size": ctc_vocab_size,
-    "ctc_weight": args.ctc_weight,
-    "num_speakers": num_speakers,
 }
 train_cowaver(build_model(args.architecture, **model_kwargs))
 

@@ -7,8 +7,8 @@ from PIL import Image, ImageDraw, ImageFont
 from matplotlib import font_manager
 import shutil
 import tarfile
-import ipywidgets as widgets
 import unicodedata
+import ipywidgets as widgets
 from pathlib import Path
 from collections.abc import Mapping
 from typing import Any, Callable
@@ -22,25 +22,6 @@ N_FFT = 1024 # 2048
 HOP_LENGTH = int(round(AUDIO_SAMPLE_RATE / 49))
 WIN_LENGTH = 800
 FONT_PATH = font_manager.findfont("DejaVu Sans Mono")
-REEMPLAZOS_ACENTOS = str.maketrans({
-    "á": "a",
-    "é": "e",
-    "í": "i",
-    "ó": "o",
-    "ú": "u",
-    "ü": "u",
-    "Á": "a",
-    "É": "e",
-    "Í": "i",
-    "Ó": "o",
-    "Ú": "u",
-    "Ü": "u",
-})
-
-def normalizar_texto(texto: str) -> str:
-    texto = unicodedata.normalize("NFC", texto.lower())
-    return texto.translate(REEMPLAZOS_ACENTOS)
-
 def listar_clases(carpeta: Path) -> list[str]:
     """Lista las clases contenidas en una carpeta.
 
@@ -113,35 +94,6 @@ def separar_clases(classes: list[str], fraction: float = 0.1, seed: int = 42):
     test = sorted(shuffled[:test_size])
     train = sorted(shuffled[test_size:])
     return train, test
-
-def construir_vocabulario_caracteres(datasets: list[tuple[Path, list[str] | None]]) -> dict[str, int]:
-    """Construye un vocabulario de caracteres a partir de clases de datasets.
-
-    Parameters
-    ----------
-    datasets: list[tuple[Path, list[str] | None]]
-        Lista de pares con la carpeta base de un dataset y las clases a usar.
-        Si las clases son None, se usan todas las clases de train y test.
-
-    Returns
-    -------
-    vocabulario: dict[str, int]
-        Diccionario que asigna un indice a cada caracter normalizado.
-    """
-    caracteres = set()
-    for base_dir, classes in datasets:
-        if classes is None:
-            for split in ("train", "test"):
-                for clase in listar_clases(base_dir / split):
-                    caracteres.update(normalizar_texto(clase))
-        else:
-            for clase in classes:
-                caracteres.update(normalizar_texto(clase))
-    vocabulario = {
-        caracter: indice + 1
-        for indice, caracter in enumerate(sorted(caracteres))
-    }
-    return vocabulario
 
 def encontrar_dispositivo(silent: bool = False):
     """Encuentra un dispositivo apropiado para entrenar o evaluar una red.
