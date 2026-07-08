@@ -25,14 +25,14 @@ parser.add_argument(
 parser.add_argument(
     "--adapter",
     choices=sorted(ADAPTER_REGISTRY),
-    default="pointwise",
+    default="attn",
 )
 parser.add_argument(
     "--decoder",
     choices=sorted(DECODER_REGISTRY),
-    default="recurrent",
+    default="attn",
 )
-parser.add_argument("--latent-dim", type=int, default=256)
+parser.add_argument("--latent-dim", type=int, default=512)
 parser.add_argument("--hidden-size", type=int, default=256)
 parser.add_argument("--mel-bins", type=int, default=100)
 parser.add_argument("--max-classes", type=int, default=50)

@@ -18,10 +18,6 @@ class DataModule(ABC):
         pass
 
     @abstractmethod
-    def elements_from_batch(self, batch) -> Tensor:
-        pass
-
-    @abstractmethod
     def labels_from_batch(self, batch):
         pass
         

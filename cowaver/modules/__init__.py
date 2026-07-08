@@ -2,8 +2,9 @@ from .architectures import (
     CoWaver,
     CoWaverConditioned,
     CoWaverDualRoute,
-    CoWaverUnconditioned,
+    CoWaverUnconditioned
 )
+from .phonological_awareness import PhonologicalAwareness
 from .adapters import ADAPTER_REGISTRY
 from .decoders import DECODER_REGISTRY
 
@@ -32,4 +33,5 @@ __all__ = [
     "CoWaverUnconditioned",
     "DECODER_REGISTRY",
     "build_model",
+    "PhonologicalAwareness"
 ]

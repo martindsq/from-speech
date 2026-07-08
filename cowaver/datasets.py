@@ -1,4 +1,5 @@
 import os
+import random
 from torch.nn import Module
 from torch.utils.data import Dataset
 from .transforms import RandomPosition, RandomAlign
@@ -81,6 +82,81 @@ class ImageMelDataset(Dataset):
         image = make_image(word, x_stride, y_stride)
 
         return (image, mel), target, self.task_id
+
+
+class PairedImageMelDataset(Dataset):
+    """Pair phonetized and spoken mels by class, not by recording index."""
+    def __init__(
+        self,
+        phonetized_dataset: TinySpeakDataset,
+        spoken_dataset: TinySpeakDataset,
+        position: RandomPosition | None = None,
+        mel_bins: int = 40,
+        random_pairing: bool = False,
+        seed: int = 42,
+    ):
+        if phonetized_dataset.classes != spoken_dataset.classes:
+            raise ValueError("phonetized and spoken datasets must have the same classes.")
+
+        self.phonetized_dataset = phonetized_dataset
+        self.spoken_dataset = spoken_dataset
+        self.position = position
+        self.mel_bins = mel_bins
+        self.random_pairing = random_pairing
+        self.seed = seed
+        self.spoken_indices_by_label = self._indices_by_label(spoken_dataset.samples)
+        missing_spoken_labels = [
+            label
+            for label in phonetized_dataset.classes
+            if label not in self.spoken_indices_by_label
+        ]
+        if missing_spoken_labels:
+            missing_classes = [
+                phonetized_dataset.classes[label]
+                for label in missing_spoken_labels
+            ]
+            raise ValueError(f"spoken dataset has no samples for classes: {missing_classes}")
+
+    @staticmethod
+    def _indices_by_label(samples):
+        indices_by_label = {}
+        for index, sample in enumerate(samples):
+            label = sample[1]
+            indices_by_label.setdefault(label, []).append(index)
+        return indices_by_label
+
+    def __len__(self):
+        return len(self.phonetized_dataset)
+
+    @property
+    def classes(self):
+        return self.phonetized_dataset.classes
+
+    def _spoken_index(self, index: int, target: int) -> int:
+        candidates = self.spoken_indices_by_label[target]
+        if self.random_pairing:
+            return random.choice(candidates)
+
+        generator = random.Random(self.seed + index)
+        return candidates[generator.randrange(len(candidates))]
+
+    def __getitem__(self, index):
+        phonetized_waveform, target = self.phonetized_dataset[index]
+        spoken_index = self._spoken_index(index, target)
+        spoken_waveform, spoken_target = self.spoken_dataset[spoken_index]
+        if spoken_target != target:
+            raise ValueError("paired samples must have the same target.")
+
+        phonetized_mel = extract_mel(phonetized_waveform, mel_bins=self.mel_bins)
+        spoken_mel = extract_mel(spoken_waveform, mel_bins=self.mel_bins)
+        word = self.classes[target]
+        if self.position is None:
+            x_stride, y_stride = 0, 0.5
+        else:
+            x_stride, y_stride = self.position()
+        image = make_image(word, x_stride, y_stride)
+
+        return (image, phonetized_mel, spoken_mel), target
 
 
 class RelabeledDataset(Dataset):
