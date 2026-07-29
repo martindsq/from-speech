@@ -110,13 +110,43 @@ class TrainProgramme:
     def end_factor(self) -> float:
         return self.epsilon_theta / self.epsilon_zero
 
+class TrainableMixin:
+    """Training interface for modules that should not inherit TrainableModule."""
+    def training_step(self, batch, batch_idx, phase: int) -> Tensor:
+        """Trains a batch.
+
+        Parameters
+        ----------
+        batch : 
+            The batch.
+        batch_idx : i
+            The index of the batch.
+        phase : int
+            Indicates the curent phase number.
+
+        Returns
+        -------
+        out : Tensor
+            The training loss.
+        """
+        pass
+
+    def test_step(self, data: DataModule, batch: tuple) -> TestResults:
+        return TestResults(top1=0, top3=0, top5=0)
+
+    def optimizer(self, phase: int, programme: TrainProgramme) -> Optimizer:
+        pass
+
+    def scheduler(self, optimizer: Optimizer, phase: int, programme: TrainProgramme) -> LRScheduler:
+        return LambdaLR(optimizer, lr_lambda=lambda epoch: 1.0)
+
 class TrainableModule(nn.Module):
     """A module meant to be trained."""
     def __init__(self, name: str):
         super().__init__()
         self.name = name
     
-    def training_step(self, batch, batch_idx, phase: int):
+    def training_step(self, batch, batch_idx, phase: int) -> Tensor:
         """Trains a batch.
 
         Parameters

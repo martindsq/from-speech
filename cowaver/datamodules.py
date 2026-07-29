@@ -1,9 +1,21 @@
 from pathlib import Path
 import torch
 from torch.nn import Module
-from torch.utils.data import ConcatDataset, DataLoader, WeightedRandomSampler
+from torch.utils.data import (
+    ConcatDataset,
+    DataLoader,
+    WeightedRandomSampler,
+    Subset
+)
 from .models import DataModule
-from .datasets import ImageMelDataset, PairedImageMelDataset, RelabeledDataset, TinySpeakDataset
+from .datasets import (
+    ImageMelDataset,
+    PairedImageMelDataset,
+    RelabeledDataset,
+    TinySpeakDataset,
+    ImageVecDataset,
+    PairedImageVecDataset
+)
 from .transforms import RandomPosition
 
 class TinyMel(DataModule):
@@ -26,11 +38,9 @@ class TinyMel(DataModule):
         mel_bins: int = 40,
         transform: Module | None = None,
         position: RandomPosition | None = None,
-        task_id: int = 1,
         classes: list[str] | None = None,
     ):
         batch_size = 32
-        self.task_id = task_id
         train_full_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
                 base_dir / "train",
@@ -39,7 +49,6 @@ class TinyMel(DataModule):
             ),
             position=position,
             mel_bins=mel_bins,
-            task_id=task_id,
         )
         val_full_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
@@ -47,7 +56,6 @@ class TinyMel(DataModule):
                 classes=classes,
             ),
             mel_bins=mel_bins,
-            task_id=task_id,
         )
         test_set = ImageMelDataset(
             base_dataset=TinySpeakDataset(
@@ -55,19 +63,15 @@ class TinyMel(DataModule):
                 classes=classes,
             ),
             mel_bins=mel_bins,
-            task_id=task_id,
         )
-
         generator = torch.Generator().manual_seed(42)
         train_indices, val_indices = self._stratified_split_indices(
             train_full_set.base_dataset.samples,
             train_ratio=0.8,
             generator=generator,
         )
-
         train_set = torch.utils.data.Subset(train_full_set, train_indices)
         val_set = torch.utils.data.Subset(val_full_set, val_indices)
-        
         super().__init__(batch_size, train_set, val_set, test_set)
         self._mel_prototypes = None
 
@@ -103,14 +107,14 @@ class TinyMel(DataModule):
 
     def mel_prototypes(self, dispositivo=None):
         if self._mel_prototypes is None:
-            item0 = self.test_set[0]
+            item0 = self.train_set[0]
             (_, mel0), label0 = item0[:2]
             mel0 = mel0.squeeze(0)
             num_classes = len(self.classes)
             sums = torch.zeros((num_classes, *mel0.shape), dtype=mel0.dtype)
             counts = torch.zeros(num_classes, dtype=torch.long)
 
-            for item in self.test_set:
+            for item in self.train_set:
                 (_, mel), label = item[:2]
                 mel = mel.squeeze(0)
                 sums[label] += mel
@@ -122,7 +126,6 @@ class TinyMel(DataModule):
         if dispositivo is None:
             return self._mel_prototypes
         return self._mel_prototypes.to(dispositivo)
-
 
 class FilteredTinyMel(DataModule):
     """Evaluate a subset of classes against prototypes from the full source."""
@@ -301,9 +304,8 @@ class MixedTinyMel(DataModule):
 class TinyPairedMel(DataModule):
     """Build image/phonetized-mel/spoken-mel loaders from paired class datasets.
 
-    The two audio datasets are paired by class label. Training samples draw a
-    random spoken item from the same class each time; validation and test use a
-    deterministic same-class pairing.
+    The two audio datasets are paired by class label and within-class file
+    order, so matching folder order can represent matching speakers.
     """
     def __init__(
         self,
@@ -332,8 +334,6 @@ class TinyPairedMel(DataModule):
             ),
             position=position,
             mel_bins=mel_bins,
-            random_pairing=True,
-            seed=seed,
         )
         val_full_set = PairedImageMelDataset(
             phonetized_dataset=TinySpeakDataset(
@@ -345,8 +345,6 @@ class TinyPairedMel(DataModule):
                 classes=classes,
             ),
             mel_bins=mel_bins,
-            random_pairing=False,
-            seed=seed,
         )
         test_set = PairedImageMelDataset(
             phonetized_dataset=TinySpeakDataset(
@@ -358,8 +356,6 @@ class TinyPairedMel(DataModule):
                 classes=classes,
             ),
             mel_bins=mel_bins,
-            random_pairing=False,
-            seed=seed,
         )
 
         generator = torch.Generator().manual_seed(seed)
@@ -371,6 +367,227 @@ class TinyPairedMel(DataModule):
 
         train_set = torch.utils.data.Subset(train_full_set, train_indices)
         val_set = torch.utils.data.Subset(val_full_set, val_indices)
+
+        super().__init__(batch_size, train_set, val_set, test_set)
+        self._mel_prototypes = None
+
+    @property
+    def classes(self):
+        return self.test_set.classes
+
+    def labels_from_batch(self, batch):
+        return batch[1]
+
+    def mel_prototypes(self, dispositivo=None):
+        if self._mel_prototypes is None:
+            item0 = self.test_set[0]
+            (_, _, spoken_mel0), _ = item0[:2]
+            spoken_mel0 = spoken_mel0.squeeze(0)
+            num_classes = len(self.classes)
+            sums = torch.zeros((num_classes, *spoken_mel0.shape), dtype=spoken_mel0.dtype)
+            counts = torch.zeros(num_classes, dtype=torch.long)
+
+            for item in self.test_set:
+                (_, _, spoken_mel), label = item[:2]
+                spoken_mel = spoken_mel.squeeze(0)
+                sums[label] += spoken_mel
+                counts[label] += 1
+
+            counts = counts.clamp_min(1)
+            self._mel_prototypes = sums / counts[:, None, None]
+
+        if dispositivo is None:
+            return self._mel_prototypes
+        return self._mel_prototypes.to(dispositivo)
+
+
+class TinyVec(DataModule):
+    """Build image/vec loaders for a TinySpeak-style dataset.
+
+    Parameters
+    ----------
+    base_dir: str
+        Dataset root containing `train` and `test` class folders.
+    transform:
+        Waveform transform used only for the training split. Defaults to None
+        (centered).
+    position: RandomPosition
+        Position of stimuli in image used only for the training split. Defaults
+        to None (centered).
+    """
+    def __init__(
+        self,
+        base_dir: Path,
+        wav2vec2_path: Path,
+        dispositivo: torch.device = torch.device("cpu"),
+        transform: Module | None = None,
+        position: RandomPosition | None = None,
+        classes: list[str] | None = None,
+    ):
+        batch_size = 32
+        self.dispositivo = dispositivo
+        train_full_set = ImageVecDataset(
+            base_dataset=TinySpeakDataset(
+                base_dir / "train",
+                transform=transform,
+                classes=classes,
+            ),
+            wav2vec2_path=wav2vec2_path,
+            dispositivo=dispositivo,
+            position=position,
+        )
+        val_full_set = ImageVecDataset(
+            base_dataset=TinySpeakDataset(
+                base_dir / "train",
+                classes=classes,
+            ),
+            wav2vec2_path=wav2vec2_path,
+            dispositivo=dispositivo,
+        )
+        test_set = ImageVecDataset(
+            base_dataset=TinySpeakDataset(
+                base_dir / "test",
+                classes=classes,
+            ),
+            wav2vec2_path=wav2vec2_path,
+            dispositivo=dispositivo,
+        )
+
+        generator = torch.Generator().manual_seed(42)
+        train_indices, val_indices = self._stratified_split_indices(
+            train_full_set.base_dataset.samples,
+            train_ratio=0.8,
+            generator=generator,
+        )
+
+        train_set = Subset(train_full_set, train_indices)
+        val_set = Subset(val_full_set, val_indices)
+
+        super().__init__(batch_size, train_set, val_set, test_set)
+        self._mel_prototypes = None
+
+    @staticmethod
+    def _stratified_split_indices(samples, train_ratio: float, generator: torch.Generator):
+        indices_by_label = {}
+        for index, sample in enumerate(samples):
+            label = sample[1]
+            indices_by_label.setdefault(label, []).append(index)
+
+        train_indices = []
+        val_indices = []
+        for label in sorted(indices_by_label):
+            label_indices = indices_by_label[label]
+            permutation = torch.randperm(len(label_indices), generator=generator).tolist()
+            shuffled = [label_indices[i] for i in permutation]
+
+            train_size = int(round(len(shuffled) * train_ratio))
+            if len(shuffled) > 1:
+                train_size = min(max(train_size, 1), len(shuffled) - 1)
+
+            train_indices.extend(shuffled[:train_size])
+            val_indices.extend(shuffled[train_size:])
+
+        return train_indices, val_indices
+
+    @property
+    def classes(self):
+        return self.test_set.classes
+
+    def labels_from_batch(self, batch):
+        return batch[1]
+
+    def mel_prototypes(self, dispositivo=None):
+        if self._mel_prototypes is None:
+            item0 = self.test_set[0]
+            (_, vec0), label0 = item0[:2]
+            vec0 = vec0.squeeze(0)
+            num_classes = len(self.classes)
+            sums = torch.zeros((num_classes, *vec0.shape), dtype=vec0.dtype)
+            counts = torch.zeros(num_classes, dtype=torch.long)
+
+            for item in self.test_set:
+                (_, vec), label = item[:2]
+                vec = vec.squeeze(0)
+                sums[label] += vec
+                counts[label] += 1
+
+            counts = counts.clamp_min(1)
+            self._mel_prototypes = sums / counts[:, None, None]
+
+        if dispositivo is None:
+            return self._mel_prototypes
+        return self._mel_prototypes.to(dispositivo)
+
+class TinyPairedVec(DataModule):
+    """Build image/phonetized-mel/spoken-vec loaders from paired class datasets.
+
+    The two audio datasets are paired by class label and within-class file
+    order, so matching folder order can represent matching speakers.
+    """
+    def __init__(
+        self,
+        phonetized_dir: str | Path,
+        spoken_dir: str | Path,
+        wav2vec2_path: str | Path,
+        dispositivo: torch.device = torch.device("cpu"),
+        transform: Module | None = None,
+        position: RandomPosition | None = None,
+        classes: list[str] | None = None,
+        seed: int = 42,
+    ):
+        batch_size = 32
+        phonetized_dir = Path(phonetized_dir)
+        spoken_dir = Path(spoken_dir)
+
+        train_full_set = PairedImageVecDataset(
+            phonetized_dataset=TinySpeakDataset(
+                phonetized_dir / "train",
+                transform=transform,
+                classes=classes,
+            ),
+            spoken_dataset=TinySpeakDataset(
+                spoken_dir / "train",
+                transform=transform,
+                classes=classes,
+            ),
+            wav2vec2_path=wav2vec2_path,
+            dispositivo=dispositivo,
+            position=position,
+        )
+        val_full_set = PairedImageVecDataset(
+            phonetized_dataset=TinySpeakDataset(
+                phonetized_dir / "train",
+                classes=classes,
+            ),
+            spoken_dataset=TinySpeakDataset(
+                spoken_dir / "train",
+                classes=classes,
+            ),
+            wav2vec2_path=wav2vec2_path,
+            dispositivo=dispositivo,
+        )
+        test_set = PairedImageVecDataset(
+            phonetized_dataset=TinySpeakDataset(
+                phonetized_dir / "test",
+                classes=classes,
+            ),
+            spoken_dataset=TinySpeakDataset(
+                spoken_dir / "test",
+                classes=classes,
+            ),
+            wav2vec2_path=wav2vec2_path,
+            dispositivo=dispositivo,
+        )
+
+        generator = torch.Generator().manual_seed(seed)
+        train_indices, val_indices = TinyMel._stratified_split_indices(
+            train_full_set.phonetized_dataset.samples,
+            train_ratio=0.8,
+            generator=generator,
+        )
+
+        train_set = Subset(train_full_set, train_indices)
+        val_set = Subset(val_full_set, val_indices)
 
         super().__init__(batch_size, train_set, val_set, test_set)
         self._mel_prototypes = None

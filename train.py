@@ -66,7 +66,7 @@ parser.add_argument(
 parser.add_argument(
     "--mel-bins",
     type=int,
-    default=100,
+    default=80,
     help="Number of Mel bands used by the training target.",
 )
 parser.add_argument(
@@ -85,7 +85,7 @@ parser.add_argument(
     "--epsilon-zero",
     "-e0",
     type=float,
-    default=5e-4,
+    default=1e-3,
     help="Initial learning rate.",
 )
 parser.add_argument(
@@ -99,7 +99,7 @@ parser.add_argument(
     "--epsilon-theta",
     "-et",
     type=float,
-    default=3e-5,
+    default=1e-4,
     help="Learning rate at epoch theta and for the flat tail of training.",
 )
 parser.add_argument(
@@ -276,20 +276,17 @@ def train_cowaver(cowaver: CoWaver):
     letters = TinyMel(
         base_dir=tiny_letter_path,
         mel_bins=cowaver.mel_bins,
-        task_id=1,
         position=RandomPosition(center=0.5, spread=0.5, axis="x"),
         classes=letter_classes,
     )
     phones_train = TinyMel(
         base_dir=tiny_phones_path,
         mel_bins=cowaver.mel_bins,
-        task_id=1,
         classes=phone_train_classes,
     )
     words_train = TinyMel(
         base_dir=tiny_mswc_path,
         mel_bins=cowaver.mel_bins,
-        task_id=2,
         classes=word_train_classes,
     )
     phase_proportions = {
@@ -322,7 +319,10 @@ model_kwargs = {
     "decoder": args.decoder,
     "adapter": args.adapter,
 }
-train_cowaver(build_model(args.architecture, **model_kwargs))
+net = build_model(args.architecture, **model_kwargs)
+total_params = sum(p.numel() for p in net.parameters())
+print("Parameters:", total_params)
+train_cowaver(net)
 
 #borrar_carpeta(tiny_letter_path)
 #borrar_carpeta(tiny_phones_path)

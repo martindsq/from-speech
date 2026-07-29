@@ -6,7 +6,7 @@ from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import LRScheduler, LinearLR
 
 from .adapters import build_temporal_adapter
-from .common import unpack_batch
+from .common import unpack_batch, Postnet
 from .decoders import build_decoder
 from .encoders import AvgPooledITEncoder
 from ..models import DataModule, TestResults, TrainProgramme, TrainableModule
@@ -38,6 +38,7 @@ class CoWaver(TrainableModule):
             input_dim=self.visual_encoder.feature_dim,
             latent_dim=latent_dim,
         )
+        self.postnet = Postnet()
 
     def encode(self, x: Tensor) -> Tensor:
         h = self.visual_encoder(x)
@@ -46,35 +47,26 @@ class CoWaver(TrainableModule):
     def autoencode(self, x: Tensor) -> Tensor:
         return self.mel_encoder(x)
 
-    def decode(
-        self,
-        z: Tensor,
-        task_ids: Tensor | None = None,
-        phase: int = 3,
-    ) -> tuple[Tensor, Tensor]:
+    def decode(self, z: Tensor, y: Tensor | None = None) -> Tensor:
         raise NotImplementedError
 
-    def forward(
-        self,
-        x: Tensor,
-        task_ids: Tensor | None = None,
-        phase: int = 3,
-    ) -> tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         z = self.encode(x)
-        return self.decode(z, task_ids=task_ids, phase=phase)
+        mel = self.decode(z)
+        mel = mel + self.postnet(mel)
+        return mel, z 
 
     def training_step(self, batch, batch_idx, phase: int):
-        x, y, _, task_ids = unpack_batch(batch)
+        x, y, _ = unpack_batch(batch)
         z = self.encode(x)
-        y_hat, _ = self.decode(z, task_ids=task_ids, phase=phase)
-        return F.l1_loss(y_hat, y)
+        y_hat = self.decode(z, y=y)
+        refined_y_hat = y_hat + self.postnet(y_hat)
+        return F.mse_loss(y_hat, y) + F.mse_loss(refined_y_hat, y)
 
     def test_step(self, data: DataModule, batch: tuple) -> TestResults:
-        x, _, targets, task_ids = unpack_batch(batch)
-        task_ids = self._task_ids_from_data(data, targets, task_ids)
-        y_hat, _ = self(x, task_ids=task_ids)
+        x, _, targets = unpack_batch(batch)
+        y_hat, _ = self(x)
         prototypes = data.mel_prototypes(y_hat.device)
-
         distances = distancia_mel(y_hat, prototypes)
 
         k = min(5, distances.size(1))
@@ -89,8 +81,8 @@ class CoWaver(TrainableModule):
         return TestResults(top1=top1, top3=top3, top5=top5)
 
     def inference_step(self, batch: tuple) -> tuple[Tensor, Tensor]:
-        x, _, _, task_ids = unpack_batch(batch)
-        return self(x, task_ids=task_ids)
+        x, _, _ = unpack_batch(batch)
+        return self(x)
 
     def optimizer(self, phase: int, programme: TrainProgramme) -> Optimizer:
         return AdamW(params=self.parameters(), lr=programme.epsilon_zero, weight_decay=1e-4)
@@ -107,26 +99,10 @@ class CoWaver(TrainableModule):
             last_epoch=start_epoch - 1,
         )
 
-    def _resolve_task_ids(self, task_ids, device: torch.device) -> Tensor:
+    def _single_task_indices(self, batch_size: int, device: torch.device) -> Tensor:
         if self.num_tasks is None:
-            raise ValueError(f"{type(self).__name__} does not use task_ids.")
-        if task_ids is None:
-            raise ValueError(f"{type(self).__name__} requires task_ids from the dataset.")
-        task_ids = task_ids.to(device).long().view(-1)
-        task_indices = task_ids - 1
-        if (task_indices < 0).any() or (task_indices >= self.num_tasks).any():
-            raise ValueError(f"task_ids must be in the range 1..{self.num_tasks}.")
-        return task_indices
-
-    def _task_ids_from_data(self, data: DataModule, targets: Tensor, task_ids):
-        if task_ids is None and getattr(data, "task_id", None) is not None:
-            return torch.full(
-                (targets.size(0),),
-                data.task_id,
-                dtype=torch.long,
-                device=targets.device,
-            )
-        return task_ids
+            raise ValueError(f"{type(self).__name__} does not use route indices.")
+        return torch.zeros(batch_size, dtype=torch.long, device=device)
 
 
 class CoWaverUnconditioned(CoWaver):
@@ -157,14 +133,9 @@ class CoWaverUnconditioned(CoWaver):
             seq_len=seq_len,
         )
 
-    def decode(
-        self,
-        z: Tensor,
-        task_ids: Tensor | None = None,
-        phase: int = 3,
-    ) -> tuple[Tensor, Tensor]:
-        mel = self.decoder(z)
-        return mel, z
+    def decode(self, z: Tensor, y: Tensor | None = None) -> Tensor:
+        mel = self.decoder(z, y)
+        return mel
 
 
 class CoWaverConditioned(CoWaver):
@@ -197,16 +168,11 @@ class CoWaverConditioned(CoWaver):
             seq_len=seq_len,
         )
 
-    def decode(
-        self,
-        z: Tensor,
-        task_ids: Tensor | None = None,
-        phase: int = 3,
-    ) -> tuple[Tensor, Tensor]:
-        task_ids = self._resolve_task_ids(task_ids, z.device)
-        z = z + self.task_embedding(task_ids).unsqueeze(1)
-        mel = self.decoder(z)
-        return mel, z
+    def decode(self, z: Tensor, y: Tensor | None = None) -> Tensor:
+        task_indices = self._single_task_indices(z.size(0), z.device)
+        z = z + self.task_embedding(task_indices).unsqueeze(1)
+        mel = self.decoder(z, y)
+        return mel
 
 
 class CoWaverDualRoute(CoWaver):
@@ -241,14 +207,9 @@ class CoWaverDualRoute(CoWaver):
             for _ in range(num_tasks)
         ])
 
-    def decode(
-        self,
-        z: Tensor,
-        task_ids: Tensor | None = None,
-        phase: int = 3,
-    ) -> tuple[Tensor, Tensor]:
-        task_ids = self._resolve_task_ids(task_ids, z.device)
-        outputs = torch.stack([decoder(z) for decoder in self.decoders], dim=1)
+    def decode(self, z: Tensor, y: Tensor | None = None) -> Tensor:
+        task_indices = self._single_task_indices(z.size(0), z.device)
+        outputs = torch.stack([decoder(z, y) for decoder in self.decoders], dim=1)
         batch_indices = torch.arange(z.size(0), device=z.device)
-        mel = outputs[batch_indices, task_ids]
-        return mel, z
+        mel = outputs[batch_indices, task_indices]
+        return mel

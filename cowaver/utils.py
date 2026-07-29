@@ -20,7 +20,8 @@ from .models import DataModule, TestResults, TrainHistory, TrainProgramme, Train
 AUDIO_SAMPLE_RATE = 16_000
 N_FFT = 1024 # 2048
 HOP_LENGTH = int(round(AUDIO_SAMPLE_RATE / 49))
-WIN_LENGTH = 800
+WIN_LENGTH = 1024 # 800
+POWER = 1.0
 FONT_PATH = font_manager.findfont("DejaVu Sans Mono")
 def listar_clases(carpeta: Path) -> list[str]:
     """Lista las clases contenidas en una carpeta.
@@ -223,7 +224,7 @@ def explorar_red(net: TrainableModule, data: DataModule, f: Callable[[TrainableM
     )
     return widgets.VBox([w, out])
 
-def extract_mel(waveform: Tensor, mel_bins: int = 80):
+def extract_mel(waveform: Tensor, mel_bins: int = 100):
     """Calcula un espectrograma Mel.
 
     Parameters
@@ -248,13 +249,13 @@ def extract_mel(waveform: Tensor, mel_bins: int = 80):
         n_mels=mel_bins,
         f_min=0.0,
         f_max=AUDIO_SAMPLE_RATE / 2,
-        power=2.0,
+        power=POWER,
         center=True,
         norm=None,
         mel_scale="htk"
     ).to(waveform.device)
     mel = mel_transform(waveform) 
-    return torch.log1p(mel)
+    return torch.log(torch.clamp(mel, min=0.01))
 
 def extraer_waveform(mel: Tensor):
     """Construye un waveform a partir de un espectrograma Mel.
@@ -272,7 +273,7 @@ def extraer_waveform(mel: Tensor):
 
     if mel.dim() == 2:
         mel = mel.unsqueeze(0)
-    mel = torch.expm1(mel).clamp_min(0)
+    mel = torch.exp(mel).clamp_min(0)
     inverse_mel = InverseMelScale(
         n_stft=N_FFT // 2 + 1,
         n_mels=mel.size(-2),
@@ -286,7 +287,7 @@ def extraer_waveform(mel: Tensor):
         n_fft=N_FFT,
         win_length=WIN_LENGTH,
         hop_length=HOP_LENGTH,
-        power=2.0,
+        power=POWER,
         n_iter=64,
         length=AUDIO_SAMPLE_RATE
     ).to(mel.device)

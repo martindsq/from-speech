@@ -1,7 +1,206 @@
+from typing import Tuple
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch import Tensor
+from torch import nn, Tensor
+from torch.nn import functional as F
+
+class _LocationLayer(nn.Module):
+    """Location layer used by attention to look at previous alignment history."""
+
+    def __init__(self, latent_dim: int) -> None:
+        super().__init__()
+
+        conv = nn.Conv1d(2, 32, kernel_size=7, stride=1, padding=3, dilation=1, bias=False)
+        nn.init.xavier_uniform_(conv.weight, gain=nn.init.calculate_gain("linear"))
+        self.location_conv = conv
+
+        dense = nn.Linear(32, 128, bias=False)
+        nn.init.xavier_uniform_(dense.weight, gain=nn.init.calculate_gain("tanh"))
+        self.location_dense = dense
+
+    def forward(self, attention_weights_cat: Tensor) -> Tensor:
+        """Extract features from the attention weight history.
+
+        Parameters
+        ----------
+        attention_weights_cat:
+            Previous and cumulative attention weights, tensor of shape `[B, 2, seq_len]`.
+
+        Returns
+        -------
+        processed_attention: Tensor
+            Tensor of shape `[B, seq_len, 128]`.
+        """
+        processed_attention = self.location_conv(attention_weights_cat)
+        processed_attention = processed_attention.transpose(1, 2)
+        processed_attention = self.location_dense(processed_attention)
+        return processed_attention
+
+
+class _Attention(nn.Module):
+    """Locally sensitive attention over the encoder memory."""
+
+    def __init__(self, latent_dim: int, rnn_dim: int) -> None:
+        super().__init__()
+
+        query = nn.Linear(rnn_dim, 128, bias=False)
+        nn.init.xavier_uniform_(query.weight, gain=nn.init.calculate_gain("tanh"))
+        self.query_layer = query
+
+        memory = nn.Linear(latent_dim, 128, bias=False)
+        nn.init.xavier_uniform_(memory.weight, gain=nn.init.calculate_gain("tanh"))
+        self.memory_layer = memory
+
+        v = nn.Linear(128, 1, bias=False)
+        nn.init.xavier_uniform_(v.weight, gain=nn.init.calculate_gain("linear"))
+        self.v = v
+
+        self.location_layer = _LocationLayer(latent_dim)
+
+    def forward(
+        self,
+        attention_hidden_state: Tensor,
+        memory: Tensor,
+        processed_memory: Tensor,
+        attention_weights_cat: Tensor,
+    ) -> Tuple[Tensor, Tensor]:
+        processed_query = self.query_layer(attention_hidden_state.unsqueeze(1))
+        processed_attention_weights = self.location_layer(attention_weights_cat)
+        energies = self.v(torch.tanh(processed_query + processed_attention_weights + processed_memory))
+        alignment = energies.squeeze(2)
+
+        attention_weights = F.softmax(alignment, dim=1)
+        attention_context = torch.bmm(attention_weights.unsqueeze(1), memory)
+        attention_context = attention_context.squeeze(1)
+
+        return attention_context, attention_weights
+
+
+class _Prenet(nn.Module):
+    """Two-layer, dropout-regularized projection applied to each decoder input
+    frame.
+
+    It restricts and noise up how much of the raw previous frame reaches the
+    decoder, which discourages the model from just copying it forward instead
+    of relying on attention.
+    """
+
+    def __init__(self, mel_bins: int, hidden_size: int) -> None:
+        super().__init__()
+
+        self.layers = nn.ModuleList()
+        for in_size, out_size in [(mel_bins, hidden_size), (hidden_size, hidden_size)]:
+            linear = nn.Linear(in_size, out_size, bias=False)
+            nn.init.xavier_uniform_(linear.weight, gain=nn.init.calculate_gain("linear"))
+            self.layers.append(linear)
+
+    def forward(self, x: Tensor) -> Tensor:
+        for linear in self.layers:
+            x = F.dropout(F.relu(linear(x)), p=0.5, training=True)
+        return x
+
+
+class Tacotron2Decoder(nn.Module):
+    r"""An autoregressive, attention-based decoder that converts an encoder
+    memory sequence into a mel spectrogram.
+
+    Parameters
+    ----------
+    latent_dim:
+        Number of dimensions in the encoder memory `z`.
+    hidden_size:
+        Width of the prenet's hidden bottleneck applied to each decoder input frame.
+    mel_bins:
+        Number of mel bins in the target spectrogram.
+    seq_len:
+        Fixed length of the encoder memory `z`.
+    """
+
+    def __init__(self,
+        latent_dim: int = 512,
+        hidden_size: int = 256,
+        mel_bins: int = 80,
+        seq_len: int = 49
+    ) -> None:
+        super().__init__()
+
+        self.mel_bins = mel_bins
+        self.seq_len = seq_len
+        self.attention_rnn_dim = 1024
+        self.decoder_rnn_dim = 1024
+
+        self.prenet = _Prenet(mel_bins, hidden_size)
+
+        self.attention_rnn = nn.LSTMCell(hidden_size + latent_dim, self.attention_rnn_dim)
+        self.attention_layer = _Attention(latent_dim, self.attention_rnn_dim)
+        self.decoder_rnn = nn.LSTMCell(self.attention_rnn_dim + latent_dim, self.decoder_rnn_dim)
+
+        projection = nn.Linear(self.decoder_rnn_dim + latent_dim, mel_bins)
+        nn.init.xavier_uniform_(projection.weight, gain=nn.init.calculate_gain("linear"))
+        self.linear_projection = projection
+
+    def forward(self, z: Tensor, y: Tensor | None = None) -> Tensor:
+        """Pass the input through the AttentionDecoder.
+
+        Parameters
+        ----------
+        z:
+            Tensor of shape `[B, 7, latent_dim]`.
+        y:
+            Ground-truth mel spectrogram used for teacher forcing, of shape
+            `[B, mel_bins, seq_len]`, or `None` to decode autoregressively.
+
+        Returns
+        -------
+        mel: Tensor
+            Predicted mel spectrogram, of shape `[B, mel_bins, seq_len]`.
+        """
+        B = z.size(0)
+        T = y.size(2) if y is not None else self.seq_len
+        dtype, device = z.dtype, z.device
+
+        decoder_input = torch.zeros(B, self.mel_bins, dtype=dtype, device=device)
+
+        attention_hidden = torch.zeros(B, self.attention_rnn_dim, dtype=dtype, device=device)
+        attention_cell = torch.zeros(B, self.attention_rnn_dim, dtype=dtype, device=device)
+        decoder_hidden = torch.zeros(B, self.decoder_rnn_dim, dtype=dtype, device=device)
+        decoder_cell = torch.zeros(B, self.decoder_rnn_dim, dtype=dtype, device=device)
+        attention_weights = torch.zeros(B, 7, dtype=dtype, device=device)
+        attention_weights_cum = torch.zeros(B, 7, dtype=dtype, device=device)
+        attention_context = torch.zeros(B, z.size(2), dtype=dtype, device=device)
+        processed_memory = self.attention_layer.memory_layer(z)
+
+        mel_outputs = []
+        for t in range(T):
+            prenet_input = self.prenet(decoder_input)
+
+            cell_input = torch.cat((prenet_input, attention_context), -1)
+            attention_hidden, attention_cell = self.attention_rnn(
+                cell_input,
+                (attention_hidden, attention_cell)
+            )
+            attention_hidden = F.dropout(attention_hidden, 0.1, self.training)
+
+            attention_weights_cat = torch.cat(
+                (attention_weights.unsqueeze(1), attention_weights_cum.unsqueeze(1)), dim=1
+            )
+            attention_context, attention_weights = self.attention_layer(
+                attention_hidden, z, processed_memory, attention_weights_cat
+            )
+            attention_weights_cum += attention_weights
+
+            decoder_rnn_input = torch.cat((attention_hidden, attention_context), -1)
+            decoder_hidden, decoder_cell = self.decoder_rnn(decoder_rnn_input, (decoder_hidden, decoder_cell))
+            decoder_hidden = F.dropout(decoder_hidden, 0.1, self.training)
+
+            decoder_hidden_attention_context = torch.cat((decoder_hidden, attention_context), dim=1)
+            mel_output = self.linear_projection(decoder_hidden_attention_context)
+
+            mel_outputs += [mel_output]
+
+            decoder_input = y[:, :, t] if y is not None else mel_output
+
+        mel = torch.stack(mel_outputs, dim=2)
+        return mel
 
 class ConvolutionalMelDecoder(nn.Module):
     """Decode a latent sequence into a fixed-length Mel spectrogram.
@@ -46,7 +245,7 @@ class ConvolutionalMelDecoder(nn.Module):
         self.act = nn.GELU()
         self.out_proj = nn.Conv1d(hidden_size, mel_bins, kernel_size=1)
 
-    def forward(self, z: Tensor) -> Tensor:
+    def forward(self, z: Tensor, y: Tensor | None = None) -> Tensor:
         """Convert a latent sequence into a Mel spectrogram.
 
         Parameters
@@ -121,7 +320,7 @@ class RecurrentMelDecoder(nn.Module):
             nn.Conv1d(mel_bins, mel_bins, kernel_size=3, padding=1),
         )
 
-    def forward(self, z: Tensor):
+    def forward(self, z: Tensor, y: Tensor | None = None):
         """Convert a latent sequence into a Mel spectrogram.
 
         Parameters
@@ -229,7 +428,7 @@ class MultiHeadAttentionMelDecoder(nn.Module):
         bias = -dist / (2 * align_sigma ** 2)
         return bias
 
-    def forward(self, z: Tensor):
+    def forward(self, z: Tensor, y: Tensor | None = None):
         """Convert a latent sequence into a Mel spectrogram.
 
         Parameters
@@ -296,7 +495,7 @@ class RecurrentMLPDecoder(nn.Module):
             nn.Conv1d(mel_bins, mel_bins, kernel_size=3, padding=1),
         )
 
-    def forward(self, z: Tensor) -> Tensor:
+    def forward(self, z: Tensor, y: Tensor | None = None) -> Tensor:
         if z.dim() == 2:
             z = z.unsqueeze(0)
         B = z.size(0)
@@ -327,7 +526,7 @@ class MLPDecoder(nn.Module):
             nn.Linear(hidden_size, mel_bins * seq_len),
         )
 
-    def forward(self, z: Tensor) -> Tensor:
+    def forward(self, z: Tensor, y: Tensor | None = None) -> Tensor:
         if z.dim() == 2:
             z = z.unsqueeze(0)
 
@@ -344,7 +543,8 @@ DECODER_REGISTRY = {
     "recurrent": RecurrentMelDecoder,
     "mlp": MLPDecoder,
     "rmlp": RecurrentMLPDecoder,
-    "attn": MultiHeadAttentionMelDecoder
+    "attn": MultiHeadAttentionMelDecoder,
+    "tacotron": Tacotron2Decoder
 }
 
 

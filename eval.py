@@ -34,7 +34,7 @@ parser.add_argument(
 )
 parser.add_argument("--latent-dim", type=int, default=512)
 parser.add_argument("--hidden-size", type=int, default=256)
-parser.add_argument("--mel-bins", type=int, default=100)
+parser.add_argument("--mel-bins", type=int, default=80)
 parser.add_argument("--max-classes", type=int, default=50)
 parser.add_argument(
     "--cleanup-data",
@@ -107,32 +107,27 @@ def load_cowaver(cowaver: CoWaver):
     letters = TinyMel(
         base_dir=tiny_letter_path,
         mel_bins=cowaver.mel_bins,
-        task_id=1,
         classes=letter_classes,
     )
     phones_train = TinyMel(
         base_dir=tiny_phones_path,
         mel_bins=cowaver.mel_bins,
-        task_id=1,
         classes=phone_train_classes,
     )
     phones_all = TinyMel(
         base_dir=tiny_phones_path,
         mel_bins=cowaver.mel_bins,
-        task_id=1,
         classes=phone_classes,
     )
     phones_test = FilteredTinyMel(phones_all, phone_test_classes)
     words_train = TinyMel(
         base_dir=tiny_mswc_path,
         mel_bins=cowaver.mel_bins,
-        task_id=2,
         classes=word_train_classes,
     )
     words_all = TinyMel(
         base_dir=tiny_mswc_path,
         mel_bins=cowaver.mel_bins,
-        task_id=2,
         classes=word_classes,
     )
     words_test = FilteredTinyMel(words_all, word_test_classes)

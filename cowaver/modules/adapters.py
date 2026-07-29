@@ -1,6 +1,6 @@
-import torch.nn as nn
 import torch
-from torch import Tensor
+from torch import nn, Tensor
+from torch.nn import functional as F
 
 class IdentityAdapter(nn.Module):
     """Use each temporal position independently as latent space.
@@ -203,11 +203,71 @@ class SelfAttentionTemporalAdapter(nn.Module):
         z = self.ffn_norm(z + self.ffn(z))
         return z
 
+class RecurrentAdapter(nn.Module):
+    """A stack of 1D convolutions followed by a bidirectional LSTM, used to
+    turn a sequence of embeddings into a sequence of contextualized hidden
+    states.
+
+    Parameters
+    ----------
+    input_dim:
+        Number of input embedding dimensions. Must equal `latent_dim`.
+    latent_dim:
+        Number of output embedding dimensions.
+    """
+
+    def __init__(self, input_dim: int = 512, latent_dim: int = 512, **_) -> None:
+        super().__init__()
+        assert input_dim == latent_dim
+        self.convolutions = nn.ModuleList()
+        for _ in range(2):
+            conv = nn.Conv1d(
+                latent_dim,
+                latent_dim,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+                dilation=1,
+                bias=True,
+            )
+            nn.init.xavier_uniform_(conv.weight, gain=nn.init.calculate_gain("relu"))
+            conv_layer = nn.Sequential(conv, nn.BatchNorm1d(latent_dim))
+            self.convolutions.append(conv_layer)
+        self.lstm = nn.LSTM(
+            latent_dim,
+            int(latent_dim / 2),
+            1,
+            batch_first=True,
+            bidirectional=True,
+        )
+        self.lstm.flatten_parameters()
+
+    def forward(self, h: Tensor) -> Tensor:
+        """Pass the input through the RecurrentAdapter.
+
+        Parameters
+        ----------
+        h:
+            Tensor of shape `[B, seq_len, input_dim]`.
+
+        Returns
+        -------
+        z: Tensor
+            Tensor of shape `[B, seq_len, latent_dim]`.
+        """
+        x = h.transpose(1, 2)
+        for conv in self.convolutions:
+            x = F.dropout(F.relu(conv(x)), 0.5, self.training)
+        x = x.transpose(1, 2)
+        z, _ = self.lstm(x)
+        return z
+
 ADAPTER_REGISTRY = {
     "identity": IdentityAdapter,
     "pointwise": PointwiseTemporalAdapter,
     "respointwise": ResidualPointwiseTemporalAdapter,
     "convolutional": ConvolutionalTemporalAdapter,
+    "recurrent": RecurrentAdapter,
     "attn": SelfAttentionTemporalAdapter
 }
 
