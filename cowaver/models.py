@@ -111,6 +111,10 @@ class TrainProgramme:
         return self.epsilon_theta / self.epsilon_zero
 
 class TrainableMixin:
+    @property
+    def name(self) -> str:
+        pass
+    
     """Training interface for modules that should not inherit TrainableModule."""
     def training_step(self, batch, batch_idx, phase: int) -> Tensor:
         """Trains a batch.
@@ -176,11 +180,6 @@ class TrainableModule(nn.Module):
 
     def scheduler(self, optimizer: Optimizer, phase: int, programme: TrainProgramme) -> LRScheduler:
         return LambdaLR(optimizer, lr_lambda=lambda epoch: 1.0)
-
-    def from_checkpoint(self):
-        from .checkpoints import cargar_checkpoint
-        cargar_checkpoint(self, silent=True)
-        return self
 
 @dataclass
 class TrainHistory:
