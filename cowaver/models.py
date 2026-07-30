@@ -115,7 +115,6 @@ class TrainableMixin:
     def name(self) -> str:
         pass
     
-    """Training interface for modules that should not inherit TrainableModule."""
     def training_step(self, batch, batch_idx, phase: int) -> Tensor:
         """Trains a batch.
 
