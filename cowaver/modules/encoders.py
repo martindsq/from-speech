@@ -1,6 +1,6 @@
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from .cornet import CORnet_Z
 
 class AvgPooledITEncoder(nn.Module):
@@ -17,7 +17,6 @@ class AvgPooledITEncoder(nn.Module):
 
         for param in self.cornet_z.module.IT.parameters():
             param.requires_grad = False
-
 
     def forward(self, x):
         """Average-pool the native CORnet IT map into a horizontal sequence.

@@ -2,14 +2,13 @@ import torch
 import torch.nn as nn
 from collections import OrderedDict
 
-
 class Flatten(nn.Module):
     """
-    Helper module for flattening input tensor to 1-D for the use in Linear modules
+    Helper module for flattening input tensor to 1-D for the use in Linear
+    modules
     """
     def forward(self, x):
         return x.view(x.size(0), -1)
-
 
 class Identity(nn.Module):
     """
@@ -17,7 +16,6 @@ class Identity(nn.Module):
     """
     def forward(self, x):
         return x
-
 
 class CORblock_Z(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1):
@@ -39,7 +37,6 @@ class CORblock_Z(nn.Module):
         x = self.pool(x)
         x = self.output(x)  # for an easy access to this block's output
         return x
-
 
 def CORnet_Z():
     model = nn.Sequential(OrderedDict([
@@ -68,7 +65,10 @@ def CORnet_Z():
     model = nn.DataParallel(model)
 
     url = 'https://s3.amazonaws.com/cornet-models/cornet_z-5c427c9c.pth'
-    ckpt_data = torch.utils.model_zoo.load_url(url, map_location=torch.device('cpu'))
+    ckpt_data = torch.utils.model_zoo.load_url(
+        url,
+        map_location=torch.device('cpu')
+    )
     model.load_state_dict(ckpt_data['state_dict'])
 
     return model
