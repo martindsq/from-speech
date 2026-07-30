@@ -23,6 +23,7 @@ HOP_LENGTH = int(round(AUDIO_SAMPLE_RATE / 49))
 WIN_LENGTH = 1024 # 800
 POWER = 1.0
 FONT_PATH = font_manager.findfont("DejaVu Sans Mono")
+
 def listar_clases(carpeta: Path) -> list[str]:
     """Lista las clases contenidas en una carpeta.
 
@@ -123,20 +124,20 @@ def encontrar_dispositivo(silent: bool = False):
     return dispositivo
 
 def mover_a_dispositivo(x: Tensor | nn.Module | tuple | list | Mapping, dispositivo: device | None = None):
-    """Mueve tensores o módulos a un dispositivo apropiado para entrenar o evaluar.
+    """Mueve tensores o mÃ³dulos a un dispositivo apropiado para entrenar o evaluar.
 
     Parameters
     ----------
     x: Tensor | nn.Module | tuple | list | Mapping
-        Un tensor cualquiera, un módulo, o una colección cuyos elementos sean
-        tensores o módulos.
+        Un tensor cualquiera, un mÃ³dulo, o una colecciÃ³n cuyos elementos sean
+        tensores o mÃ³dulos.
     dispositivo: device | None
         Dispositivo apropiado. Si es None, entonces se encuentra uno.
 
     Returns
     -------
     x: Tensor | nn.Module | tuple | list | Mapping
-        Igual a x pasado como parámetro, pero ubicado en el dispositivo
+        Igual a x pasado como parÃ¡metro, pero ubicado en el dispositivo
         apropiado.
     """
     if dispositivo is None:
@@ -230,14 +231,14 @@ def extract_mel(waveform: Tensor, mel_bins: int = 100):
     Parameters
     ----------
     waveform: Tensor
-        Tensor de forma [B, T] donde B es el tamaño del batch y T el número de
+        Tensor de forma [B, T] donde B es el tamaÃ±o del batch y T el nÃºmero de
         frames temporales. Se puede omitir B.
 
     Returns
     -------
     mel: Tensor
         Espectrograma Mel comprimido de forma [B, mel_bins, T]. B es igual a 1
-        si se omitió en waveform.
+        si se omitiÃ³ en waveform.
     """
     if waveform.dim() == 1:
         waveform = waveform.unsqueeze(0)
@@ -263,12 +264,12 @@ def extraer_waveform(mel: Tensor):
     Parameters
     ----------
     mel: Tensor
-        Tensor de forma [B, n_mels, T] donde T el número de frames temporales.
+        Tensor de forma [B, n_mels, T] donde T el nÃºmero de frames temporales.
 
     Returns
     -------
     waveform: Tensor
-        Tensor de forma [B, 1, T] con el waveform extraído.
+        Tensor de forma [B, 1, T] con el waveform extraÃ­do.
     """
 
     if mel.dim() == 2:
@@ -302,14 +303,14 @@ def clip_waveform(waveform: Tensor, duration: float = 1.0):
     Parameters
     ----------
     waveform: Tensor
-        Tensor de forma [T] donde T el número de frames temporales.
+        Tensor de forma [T] donde T el nÃºmero de frames temporales.
     duracion: float
-        Duración, en segundos, del audio resultante.
+        DuraciÃ³n, en segundos, del audio resultante.
 
     Returns
     -------
     out: Tensor
-        Tensor de forma [T_clipped] donde T_clipped el número de frames
+        Tensor de forma [T_clipped] donde T_clipped el nÃºmero de frames
         temporales.
     """
     target_len = int(AUDIO_SAMPLE_RATE * duration)
@@ -335,7 +336,7 @@ def make_image(word: str, x_stride: float = 0, y_stride: float = 0.5):
     Returns
     -------
     x: Tensor
-        Tensor de forma [C, H, W] donde C es el número de canales (3), H el
+        Tensor de forma [C, H, W] donde C es el nÃºmero de canales (3), H el
         alto de la imagen (224) y W el ancho (224).
     """
     W = 224
@@ -357,22 +358,22 @@ def make_image(word: str, x_stride: float = 0, y_stride: float = 0.5):
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
 
-    # Convertir los strides continuos en índices discretos: 0, ..., 6
+    # Convertir los strides continuos en Ã­ndices discretos: 0, ..., 6
     x_cell = min(int(x_stride * n_cells), n_cells - 1)
     y_cell = min(int(y_stride * n_cells), n_cells - 1)
 
     cell_w = W / n_cells
     cell_h = H / n_cells
 
-    # Límites izquierdos/superiores de la celda seleccionada
+    # LÃ­mites izquierdos/superiores de la celda seleccionada
     cell_x = x_cell * cell_w
     cell_y = y_cell * cell_h
 
-    # Centro del cubículo elegido
+    # Centro del cubÃ­culo elegido
     cell_center_x = (x_cell + 0.5) * cell_w
     cell_center_y = (y_cell + 0.5) * cell_h
     
-    # Posición ideal, centrada en el cubículo
+    # PosiciÃ³n ideal, centrada en el cubÃ­culo
     x_pos = cell_center_x - text_w / 2 - bbox[0]
     y_pos = cell_center_y - text_h / 2 - bbox[1]
     
@@ -461,7 +462,7 @@ def evaluar_loss(net: TrainableModule, data: DataModule, phase: int = 1, disposi
     return running_loss / len(test_loader)
 
 def evaluar_red(net: TrainableModule, data: DataModule):
-    """Evalúa una red neuronal artificial.
+    """EvalÃºa una red neuronal artificial.
 
     Parameters
     ----------
@@ -473,7 +474,7 @@ def evaluar_red(net: TrainableModule, data: DataModule):
     Returns
     -------
     results: TestResults
-        Resultado de la evaluación.
+        Resultado de la evaluaciÃ³n.
     """
     dispositivo= encontrar_dispositivo(silent=True)
     net = mover_a_dispositivo(net, dispositivo)
@@ -505,16 +506,16 @@ def pca(X: Tensor, q: int = 2):
     Parameters
     ----------
     X: Tensor
-        Tensor de forma [B, D], donde B es el número de ejemplos y D el número
-        de dimensiones o características de cada ejemplo.
+        Tensor de forma [B, D], donde B es el nÃºmero de ejemplos y D el nÃºmero
+        de dimensiones o caracterÃ­sticas de cada ejemplo.
 
     q: int
-        Número de componentes principales a conservar. Por defecto es 2.
+        NÃºmero de componentes principales a conservar. Por defecto es 2.
 
     Returns
     -------
     scores: Tensor
-        Tensor de forma [B, q], con la proyección de cada ejemplo
+        Tensor de forma [B, q], con la proyecciÃ³n de cada ejemplo
         sobre las componentes principales.
     """
     X_centered = X - X.mean(dim=0, keepdim=True)
@@ -541,7 +542,7 @@ def distancia_mel(mel_a: torch.Tensor, mel_b: torch.Tensor) -> torch.Tensor:
     distances: Tensor
         Tensor de forma [B, P], donde distances[b, p] contiene la distancia
         DTW normalizada entre mel_a[b] y mel_b[p]. Si alguna entrada era 2D,
-        se interpreta como un batch de tamaño 1.
+        se interpreta como un batch de tamaÃ±o 1.
     """
 
     if mel_a.dim() == 2:
@@ -580,3 +581,30 @@ def distancia_mel(mel_a: torch.Tensor, mel_b: torch.Tensor) -> torch.Tensor:
 
     distances = dtw[:, :, T1, T2] / (T1 + T2)
     return distances
+
+def topk(distancias: torch.Tensor, targets: torch.Tensor) -> TestResults:
+    """Calcula los resultados de una evaluacion.
+    
+    Parameters
+    ---------
+    distancias: torch.Tensor
+        Tensor de forma [B, T] donde B es el tamaño del batch, T es la cantidad
+    	de targets, tal que distancias[b][t] es la distancia del elemento b en
+        el batch con el target t.
+    targets: torch.Tensor
+    	Tensor de forma [B] donde B es el tamaño del batch. targets[b] es un
+        numero de 0 a T-1 e indica el target esperado de b.
+
+    Returns
+    -------
+    results: TestResults
+    	Frecuencias con las que distancias acierta en el top-1, top-3 y top-5 de
+    	las veces.
+    """
+    k = min(5, distancias.size(1))
+    topk = distancias.topk(k, dim=1, largest=False).indices
+    targets = targets.view(-1, 1)
+    top1 = (topk[:, :1] == targets).any(dim=1).sum().item()
+    top3 = (topk[:, :min(3, k)] == targets).any(dim=1).sum().item()
+    top5 = (topk[:, :k] == targets).any(dim=1).sum().item()
+    return TestResults(top1=top1, top3=top3, top5=top5)
