@@ -107,8 +107,8 @@ def graficar_embedding(activation, ax=None, vmin=-3, vmax=3):
         aspect="auto",
     )
 
-    ax.set_title("Activación")
-    ax.set_xlabel("Dimensión")
+    ax.set_title("ActivaciÃ³n")
+    ax.set_xlabel("DimensiÃ³n")
     ax.set_ylabel("Ventana")
     ax.set_xticks([0, activation.size(1) - 1])
     ax.set_yticks([0, activation.size(0) - 1])
