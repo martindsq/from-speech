@@ -421,19 +421,23 @@ def entrenar_red(net: TrainableModule, data: DataModule, programme: TrainProgram
 
         net.eval()
         running_loss = 0.0
+        running_accuracy = 0.0
         with torch.no_grad():
             for batch_idx, batch in enumerate(val_loader):
                 batch = mover_a_dispositivo(batch, dispositivo)
                 loss = net.training_step(batch, batch_idx, phase)
+                accuracy = net.test_step(data, batch).top1
                 running_loss += loss.item()
+                running_accuracy += accuracy
         epoch_val_loss = running_loss / len(val_loader)
+        epoch_val_accuracy = running_accuracy / len(val_loader)
 
         scheduler.step()
 
         train_history.train_losses.append(epoch_train_loss)
         train_history.val_losses.append(epoch_val_loss)
 
-        print(f"Epoch {epoch+1}/{num_epochs} | " f"train_loss={epoch_train_loss:.4f} | val_loss={epoch_val_loss:.4f}")
+        print(f"Epoch {epoch+1}/{num_epochs} | " f"train_loss={epoch_train_loss:.4f} | val_loss={epoch_val_loss:.4f} | val_acc={epoch_val_accuracy:.2f}")
 
     test_loss = evaluar_loss(net, data, phase=phase, dispositivo=dispositivo)
     train_history.test_losses.append(test_loss)
