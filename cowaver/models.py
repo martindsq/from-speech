@@ -71,27 +71,25 @@ class TestResults:
 
 @dataclass
 class TrainProgramme:
+    """
+
+    Attributes
+    ----------
+    theta_max : int
+    num_phases : int
+    epsilon_zero : float
+    theta : int
+    epsilon_theta : float
+    patience : int
+    	Cuantas épocas esperar hasta finalizar el entrenamiento de forma
+    	prematura (early stopping).
+    """
     theta_max: int
     num_phases: int
     epsilon_zero: float = 3e-4
     theta: int = 60
     epsilon_theta: float = 3e-5
-
-    def __post_init__(self):
-        if self.theta_max <= 0:
-            raise ValueError("theta_max must be positive.")
-        if self.num_phases <= 0:
-            raise ValueError("num_phases must be positive.")
-        if self.theta_max % self.num_phases != 0:
-            raise ValueError("theta_max must be divisible by num_phases.")
-        if self.epsilon_zero <= 0:
-            raise ValueError("epsilon_zero must be positive.")
-        if self.theta <= 0:
-            raise ValueError("theta must be positive.")
-        if self.theta > self.theta_max:
-            raise ValueError("theta must be less than or equal to theta_max.")
-        if self.epsilon_theta <= 0 or self.epsilon_theta > self.epsilon_zero:
-            raise ValueError("epsilon_theta must be in the range (0, epsilon_zero].")
+    patience: int = 3
 
     def epochs_for_phase(self, phase: int) -> int:
         return self.theta_max // self.num_phases

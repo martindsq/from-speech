@@ -1,3 +1,6 @@
+import copy
+import random
+import numpy as np
 import torch
 import torchaudio
 from torch import Tensor, nn, device
@@ -15,12 +18,18 @@ from typing import Any, Callable
 from torchvision.transforms import ToTensor
 from torchaudio.transforms import MelSpectrogram
 from .checkpoints import imprimir_encabezado, guardar_checkpoint
-from .models import DataModule, TestResults, TrainHistory, TrainProgramme, TrainableModule
+from .models import (
+    DataModule,
+    TestResults,
+    TrainHistory,
+    TrainProgramme,
+    TrainableModule
+)
 
 AUDIO_SAMPLE_RATE = 16_000
-N_FFT = 1024 # 2048
+N_FFT = 1024
 HOP_LENGTH = int(round(AUDIO_SAMPLE_RATE / 49))
-WIN_LENGTH = 1024 # 800
+WIN_LENGTH = 1024
 POWER = 1.0
 FONT_PATH = font_manager.findfont("DejaVu Sans Mono")
 
@@ -341,10 +350,6 @@ def make_image(word: str, x_stride: float = 0, y_stride: float = 0.5):
     """
     W = 224
     H = 224
-    """Construye una imagen y ubica el texto en una grilla discreta."""
-
-    W = 224
-    H = 224
     n_cells = 7
 
     word = unicodedata.normalize("NFC", word)
@@ -390,6 +395,23 @@ def make_image(word: str, x_stride: float = 0, y_stride: float = 0.5):
 
     return ToTensor()(img) 
 
+def sembrar_semilla(semilla: int):
+    """Función que controla la aleatorialidad.
+    
+    Arguments
+    ---------
+    semilla : int
+    	Número entero que define el estado aleatorio.
+    """
+    print(f"Sembrando semilla {semilla}", end="...")
+    random.seed(semilla)
+    np.random.seed(semilla)
+    torch.manual_seed(semilla)
+    torch.use_deterministic_algorithms(True)
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = False
+    print("OK")
+    
 def entrenar_red(net: TrainableModule, data: DataModule, programme: TrainProgramme, phase: int = 1, dispositivo: device | None = None, checkpoints_folder: Path | None = None) -> TrainHistory:
     if dispositivo is None:
         dispositivo = encontrar_dispositivo(silent=True)
@@ -405,6 +427,21 @@ def entrenar_red(net: TrainableModule, data: DataModule, programme: TrainProgram
 
     train_history = TrainHistory()
 
+    # Lleva registro de la mejor pérdida de validación durante el
+    # entrenamiento
+    best_val_loss = Tensor(float("inf"))
+    
+    # Lleva registro del número de épocas en que la pérdida de
+    # validación es peor que la mejor durante el entrenamiento
+    wait = 0
+
+    # Mejor modelo entrenado
+    best_net = net
+
+    # Cuantas épocas esperar hasta finalizar el entrenamiento de forma
+    # prematura
+    patience = programme.patience
+    
     imprimir_encabezado(net, phase)
     for epoch in range(num_epochs):
         net.train()
@@ -421,49 +458,35 @@ def entrenar_red(net: TrainableModule, data: DataModule, programme: TrainProgram
 
         net.eval()
         running_loss = 0.0
-        running_accuracy = 0.0
         with torch.no_grad():
             for batch_idx, batch in enumerate(val_loader):
                 batch = mover_a_dispositivo(batch, dispositivo)
                 loss = net.training_step(batch, batch_idx, phase)
-                accuracy = net.test_step(data, batch).top1
                 running_loss += loss.item()
-                running_accuracy += accuracy
         epoch_val_loss = running_loss / len(val_loader)
-        epoch_val_accuracy = running_accuracy / len(val_loader)
 
         scheduler.step()
 
         train_history.train_losses.append(epoch_train_loss)
         train_history.val_losses.append(epoch_val_loss)
 
-        print(f"Epoch {epoch+1}/{num_epochs} | " f"train_loss={epoch_train_loss:.4f} | val_loss={epoch_val_loss:.4f} | val_acc={epoch_val_accuracy:.2f}")
+        print(f"Epoch {epoch+1}/{num_epochs} | " f"train_loss={epoch_train_loss:.4f} | val_loss={epoch_val_loss:.4f}")
 
-    test_loss = evaluar_loss(net, data, phase=phase, dispositivo=dispositivo)
-    train_history.test_losses.append(test_loss)
-    print(f"Phase {phase} | test_loss={test_loss:.4f}")
+        if epoch_val_loss <= best_val_loss:
+            best_val_loss = epoch_val_loss
+            best_net = copy.deepcopy(net)
+            wait = 0
+        else:
+            wait += 1
+
+        if wait > patience:
+            print("El entrenamiento finalizó de forma prematura.")
+            break
 
     if checkpoints_folder is not None:
         guardar_checkpoint(net, train_history, programme, phase, checkpoints_folder)
 
     return train_history
-
-def evaluar_loss(net: TrainableModule, data: DataModule, phase: int = 1, dispositivo: device | None = None) -> float:
-    """Mide la loss de entrenamiento sobre el conjunto de test."""
-    if dispositivo is None:
-        dispositivo = encontrar_dispositivo(silent=True)
-    net = mover_a_dispositivo(net, dispositivo)
-    test_loader = data.test_loader()
-
-    net.eval()
-    running_loss = 0.0
-    with torch.no_grad():
-        for batch_idx, batch in enumerate(test_loader):
-            batch = mover_a_dispositivo(batch, dispositivo)
-            loss = net.training_step(batch, batch_idx, phase)
-            running_loss += loss.item()
-
-    return running_loss / len(test_loader)
 
 def evaluar_red(net: TrainableModule, data: DataModule):
     """EvalÃºa una red neuronal artificial.
