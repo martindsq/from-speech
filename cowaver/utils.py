@@ -23,7 +23,7 @@ from .models import (
     TestResults,
     TrainHistory,
     TrainProgramme,
-    TrainableModule
+    TrainableMixin
 )
 
 AUDIO_SAMPLE_RATE = 16_000
@@ -38,12 +38,12 @@ def listar_clases(carpeta: Path) -> list[str]:
 
     Parameters
     ----------
-    carpeta: Path
+    carpeta : Path
         Carpeta que contiene una subcarpeta por cada clase.
 
     Returns
     -------
-    clases: list[str]
+    clases : list[str]
         Lista ordenada con los nombres de las clases encontradas.
     """
     clases = [
@@ -52,27 +52,27 @@ def listar_clases(carpeta: Path) -> list[str]:
     ]
     return clases
 
-def seleccionar_clases(base_path: Path, max_classes: int, seed: int = 42) -> list[str]:
+def seleccionar_clases(folder: Path, size: int, seed: int = 42) -> list[str]:
     """Selecciona un subconjunto reproducible de clases y lo devuelve ordenado.
 
     Parameters
     ----------
-    base_path: Path
+    folder : Path
         Carpeta base del dataset.
-    max_classes: int
+    size : int
         Numero maximo de clases a seleccionar.
-    seed: int
-        Semilla para seleccionar las clases de forma reproducible.
+    seed : int
+	Semilla para separar las clases de forma reproducible. Por defecto: 42.
 
     Returns
     -------
-    clases: list[str]
+    clases : list[str]
         Lista ordenada con las clases seleccionadas.
     """
-    classes = listar_clases(base_path / "train")
+    classes = listar_clases(folder / "train")
     generator = torch.Generator().manual_seed(seed)
     permutation = torch.randperm(len(classes), generator=generator).tolist()
-    clases = sorted(classes[index] for index in permutation[:max_classes])
+    clases = sorted(classes[index] for index in permutation[:size])
     return clases
 
 def separar_clases(classes: list[str], fraction: float = 0.1, seed: int = 42):
@@ -80,18 +80,18 @@ def separar_clases(classes: list[str], fraction: float = 0.1, seed: int = 42):
 
     Parameters
     ----------
-    classes: list[str]
+    classes : list[str]
         Lista de clases a separar.
-    fraction: float
-        Fraccion de clases a usar para test.
-    seed: int
-        Semilla para separar las clases de forma reproducible.
+    fraction : float
+        Fraccion de clases a usar para test. Por defecto: 0.1.
+    seed : int
+        Semilla para separar las clases de forma reproducible. Por defecto: 42.
 
     Returns
     -------
-    train: list[str]
+    train : list[str]
         Lista ordenada con las clases de train.
-    test: list[str]
+    test : list[str]
         Lista ordenada con las clases de test.
     """
     if len(classes) < 2:
@@ -106,28 +106,29 @@ def separar_clases(classes: list[str], fraction: float = 0.1, seed: int = 42):
     train = sorted(shuffled[test_size:])
     return train, test
 
-def encontrar_dispositivo(silent: bool = False):
-    """Encuentra un dispositivo apropiado para entrenar o evaluar una red.
+def encontrar_dispositivo(silent: bool = False) -> torch.device:
+    """Encuentra un dispositivo apropiado para entrenar o evaluar una
+    red neuronal artificial.
 
     Parameters
     ----------
-    silent: bool 
-        No imprime nada en consola, de lo contrario, imprime el dispositivo
-        encontrado.
+    silent : bool 
+        No imprime nada en consola, de lo contrario, imprime el
+    	dispositivo encontrado.
 
     Returns
     -------
-    dispositivo: device 
+    dispositivo : torch.device 
         El dispositivo encontrado.
     """
     if not silent:
         print("Buscando dispositivo", end="... ")
     if torch.cuda.is_available():
-        dispositivo = device("cuda")
+        dispositivo = torch.device("cuda")
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        dispositivo = device("mps")
+        dispositivo = torch.device("mps")
     else:
-        dispositivo = device("cpu")
+        dispositivo = torch.device("cpu")
     if not silent:
         print(dispositivo.type.upper())
     return dispositivo
@@ -187,67 +188,20 @@ def cargar_audio(audio_path):
         waveform = resampler(waveform)
     return waveform
 
-def explorar_datos(data: DataModule, f: Callable[[DataModule, Tensor], None]):
-    loader = data.inference_loader()
-    batches = list(loader)
-    labels = [data.labels_from_batch(batch).item() for batch in batches]
-    options = [(f"{data.classes[label]}", i) for i, label in enumerate(labels)]
-    out = widgets.Output()
-    def view(batch_idx):
-        batch = batches[batch_idx]
-        with out:
-            out.clear_output(wait=True)
-            f(data, batch)
-    w = widgets.interactive(
-        view,
-        batch_idx=widgets.Dropdown(
-            options=options,
-            value=0 if batches else None,
-            description="Ver:",
-            disabled=(len(batches) == 0),
-        )
-    )
-    return widgets.VBox([w, out])
-
-def explorar_red(net: TrainableModule, data: DataModule, f: Callable[[TrainableModule, Any], Any]):
-    loader = data.inference_loader()
-    batches = list(loader)
-    labels = [data.labels_from_batch(batch).item() for batch in batches]
-    options = [(f"{data.classes[label]}", i) for i, label in enumerate(labels)]
-    out = widgets.Output()
-    dispositivo = encontrar_dispositivo(silent=True)
-    net = mover_a_dispositivo(net, dispositivo)
-    def view(batch_idx):
-        batch = mover_a_dispositivo(batches[batch_idx], dispositivo)
-        with torch.no_grad():
-            with out:
-                out.clear_output(wait=True)
-                f(net, batch)
-    w = widgets.interactive(
-        view,
-        batch_idx=widgets.Dropdown(
-            options=options,
-            value=0 if batches else None,
-            description="Ver:",
-            disabled=(len(batches) == 0),
-        )
-    )
-    return widgets.VBox([w, out])
-
-def extract_mel(waveform: Tensor, mel_bins: int = 100):
+def extract_mel(waveform: Tensor, mel_bins: int = 80):
     """Calcula un espectrograma Mel.
 
     Parameters
     ----------
-    waveform: Tensor
-        Tensor de forma [B, T] donde B es el tamaÃ±o del batch y T el nÃºmero de
-        frames temporales. Se puede omitir B.
+    waveform : Tensor
+        Tensor de forma [B, T] donde B es el tamaño del batch y T el
+    	número de frames temporales. Se puede omitir B.
 
     Returns
     -------
-    mel: Tensor
-        Espectrograma Mel comprimido de forma [B, mel_bins, T]. B es igual a 1
-        si se omitiÃ³ en waveform.
+    mel : Tensor
+        Espectrograma Mel comprimido de forma [B, mel_bins, T]. B es
+    	igual a 1 si se omitió en waveform.
     """
     if waveform.dim() == 1:
         waveform = waveform.unsqueeze(0)
@@ -272,13 +226,14 @@ def extraer_waveform(mel: Tensor):
 
     Parameters
     ----------
-    mel: Tensor
-        Tensor de forma [B, n_mels, T] donde T el nÃºmero de frames temporales.
+    mel : Tensor
+        Tensor de forma [B, n_mels, T] donde T el número de frames
+    	temporales.
 
     Returns
     -------
-    waveform: Tensor
-        Tensor de forma [B, 1, T] con el waveform extraÃ­do.
+    waveform : Tensor
+        Tensor de forma [B, 1, T] con el waveform extraído.
     """
 
     if mel.dim() == 2:
@@ -311,15 +266,15 @@ def clip_waveform(waveform: Tensor, duration: float = 1.0):
 
     Parameters
     ----------
-    waveform: Tensor
-        Tensor de forma [T] donde T el nÃºmero de frames temporales.
-    duracion: float
-        DuraciÃ³n, en segundos, del audio resultante.
+    waveform : Tensor
+        Tensor de forma [T] donde T el número de frames temporales.
+    duracion : float
+        Duración, en segundos, del audio resultante.
 
     Returns
     -------
-    out: Tensor
-        Tensor de forma [T_clipped] donde T_clipped el nÃºmero de frames
+    out : Tensor
+        Tensor de forma [T_clipped] donde T_clipped el número de frames
         temporales.
     """
     target_len = int(AUDIO_SAMPLE_RATE * duration)
@@ -335,11 +290,11 @@ def make_image(word: str, x_stride: float = 0, y_stride: float = 0.5):
 
     Parameters
     ----------
-    word: str
+    word : str
         Palabra
-    x_stride: float
+    x_stride : float
         Posicion en el eje horizontal. 0 = izquierda, 1 = derecha.
-    y_stride: float
+    y_stride : float
         Posicion en el eje vertical. 0 = arriba, 1 = abajo.
 
     Returns
@@ -403,7 +358,7 @@ def sembrar_semilla(semilla: int):
     semilla : int
     	Número entero que define el estado aleatorio.
     """
-    print(f"Sembrando semilla {semilla}", end="...")
+    print(f"Sembrando semilla {semilla}", end="... ")
     random.seed(semilla)
     np.random.seed(semilla)
     torch.manual_seed(semilla)
@@ -411,16 +366,20 @@ def sembrar_semilla(semilla: int):
     if torch.cuda.is_available():
         torch.backends.cudnn.benchmark = False
     print("OK")
-    
-def entrenar_red(net: TrainableModule, data: DataModule, programme: TrainProgramme, phase: int = 1, dispositivo: device | None = None, checkpoints_folder: Path | None = None) -> TrainHistory:
-    if dispositivo is None:
-        dispositivo = encontrar_dispositivo(silent=True)
+
+def entrenar_red(
+    net: TrainableMixin,
+    data: DataModule,
+    programme: TrainProgramme
+) -> TrainHistory:
+    dispositivo = encontrar_dispositivo()
     net = mover_a_dispositivo(net, dispositivo)
+    
+    optimizer = net.optimizer(programme)
 
-    optimizer = net.optimizer(phase, programme)
-
-    scheduler = net.scheduler(optimizer, phase, programme)
-    num_epochs = programme.epochs_for_phase(phase)
+    scheduler = net.scheduler(optimizer, programme)
+    
+    num_epochs = programme.num_epochs
 
     train_loader = data.train_loader()
     val_loader = data.val_loader()
@@ -429,27 +388,27 @@ def entrenar_red(net: TrainableModule, data: DataModule, programme: TrainProgram
 
     # Lleva registro de la mejor pérdida de validación durante el
     # entrenamiento
-    best_val_loss = Tensor(float("inf"))
+    best_val_loss = torch.tensor(float("inf"))
     
     # Lleva registro del número de épocas en que la pérdida de
     # validación es peor que la mejor durante el entrenamiento
     wait = 0
 
     # Mejor modelo entrenado
-    best_net = net
+    best_net = copy.deepcopy(net)
 
     # Cuantas épocas esperar hasta finalizar el entrenamiento de forma
     # prematura
     patience = programme.patience
     
-    imprimir_encabezado(net, phase)
+    imprimir_encabezado(net)
     for epoch in range(num_epochs):
         net.train()
         running_loss = 0.0
         for batch_idx, batch in enumerate(train_loader):
             batch = mover_a_dispositivo(batch, dispositivo)
             optimizer.zero_grad()
-            loss = net.training_step(batch, batch_idx, phase)
+            loss = net.training_step(batch)
             running_loss += loss.item()
             loss.backward()
             nn.utils.clip_grad_norm_(net.parameters(), 1.0)
@@ -461,7 +420,7 @@ def entrenar_red(net: TrainableModule, data: DataModule, programme: TrainProgram
         with torch.no_grad():
             for batch_idx, batch in enumerate(val_loader):
                 batch = mover_a_dispositivo(batch, dispositivo)
-                loss = net.training_step(batch, batch_idx, phase)
+                loss = net.training_step(batch)
                 running_loss += loss.item()
         epoch_val_loss = running_loss / len(val_loader)
 
@@ -470,7 +429,9 @@ def entrenar_red(net: TrainableModule, data: DataModule, programme: TrainProgram
         train_history.train_losses.append(epoch_train_loss)
         train_history.val_losses.append(epoch_val_loss)
 
-        print(f"Epoch {epoch+1}/{num_epochs} | " f"train_loss={epoch_train_loss:.4f} | val_loss={epoch_val_loss:.4f}")
+        print(f"Época {epoch+1}/{num_epochs}", end=" | ")
+        print(f"train_loss={epoch_train_loss:.4f}", end=" | ")
+        print(f"val_loss={epoch_val_loss:.4f}")
 
         if epoch_val_loss <= best_val_loss:
             best_val_loss = epoch_val_loss
@@ -479,31 +440,28 @@ def entrenar_red(net: TrainableModule, data: DataModule, programme: TrainProgram
         else:
             wait += 1
 
-        if wait > patience:
+        if wait >= patience:
             print("El entrenamiento finalizó de forma prematura.")
             break
 
-    if checkpoints_folder is not None:
-        guardar_checkpoint(net, train_history, programme, phase, checkpoints_folder)
+    return best_net, train_history
 
-    return train_history
-
-def evaluar_red(net: TrainableModule, data: DataModule):
-    """EvalÃºa una red neuronal artificial.
+def evaluar_red(net: TrainableMixin, data: DataModule):
+    """Evalúa una red neuronal artificial.
 
     Parameters
     ----------
-    net: TrainableModule
+    net : TrainableMixin
         Red neuronal artificial a evaluar.
-    data: DataModule
-        Conjunto de datos sobre los cuales evaluar..
+    data : DataModule
+        Conjunto de datos sobre los cuales evaluar.
 
     Returns
     -------
-    results: TestResults
-        Resultado de la evaluaciÃ³n.
+    results : TestResults
+        Resultado de la evaluación.
     """
-    dispositivo= encontrar_dispositivo(silent=True)
+    dispositivo = encontrar_dispositivo(silent=True)
     net = mover_a_dispositivo(net, dispositivo)
     test_loader = data.test_loader()
     net.eval()
@@ -532,18 +490,18 @@ def pca(X: Tensor, q: int = 2):
 
     Parameters
     ----------
-    X: Tensor
-        Tensor de forma [B, D], donde B es el nÃºmero de ejemplos y D el nÃºmero
-        de dimensiones o caracterÃ­sticas de cada ejemplo.
+    X : Tensor
+        Tensor de forma [B, D], donde B es el número de ejemplos y D el
+    	número de dimensiones o características de cada ejemplo.
 
-    q: int
-        NÃºmero de componentes principales a conservar. Por defecto es 2.
+    q : int
+        Número de componentes principales a conservar. Por defecto es 2.
 
     Returns
     -------
-    scores: Tensor
-        Tensor de forma [B, q], con la proyecciÃ³n de cada ejemplo
-        sobre las componentes principales.
+    scores : Tensor
+        Tensor de forma [B, q], con la proyección de cada ejemplo sobre
+        las componentes principales.
     """
     X_centered = X - X.mean(dim=0, keepdim=True)
     U, S, V = torch.pca_lowrank(X_centered, q=q)
@@ -555,21 +513,21 @@ def distancia_mel(mel_a: torch.Tensor, mel_b: torch.Tensor) -> torch.Tensor:
 
     Parameters
     ----------
-    mel_a: Tensor
+    mel_a : Tensor
         Tensor de forma [mel_bins, seq_len] o [B, mel_bins, seq_len],
         correspondiente al primer espectrograma mel o a un batch.
 
-    mel_b: Tensor
+    mel_b : Tensor
         Tensor de forma [mel_bins, seq_len] o [P, mel_bins, seq_len],
         correspondiente al segundo espectrograma mel o a un conjunto de
         espectrogramas.
 
     Returns
     -------
-    distances: Tensor
-        Tensor de forma [B, P], donde distances[b, p] contiene la distancia
-        DTW normalizada entre mel_a[b] y mel_b[p]. Si alguna entrada era 2D,
-        se interpreta como un batch de tamaÃ±o 1.
+    distances : Tensor
+        Tensor de forma [B, P], donde distances[b, p] contiene la
+    	distancia DTW normalizada entre mel_a[b] y mel_b[p]. Si alguna
+    	entrada era 2D, se interpreta como un batch de tamaño 1.
     """
 
     if mel_a.dim() == 2:
@@ -614,19 +572,19 @@ def topk(distancias: torch.Tensor, targets: torch.Tensor) -> TestResults:
     
     Parameters
     ---------
-    distancias: torch.Tensor
-        Tensor de forma [B, T] donde B es el tamaño del batch, T es la cantidad
-    	de targets, tal que distancias[b][t] es la distancia del elemento b en
-        el batch con el target t.
-    targets: torch.Tensor
-    	Tensor de forma [B] donde B es el tamaño del batch. targets[b] es un
-        numero de 0 a T-1 e indica el target esperado de b.
+    distancias : torch.Tensor
+        Tensor de forma [B, T] donde B es el tamaño del batch, T es la
+    	cantidad de targets, tal que distancias[b][t] es la distancia
+    	del elemento b en el batch con el target t.
+    targets : torch.Tensor
+    	Tensor de forma [B] donde B es el tamaño del batch. targets[b]
+    	es un número de 0 a T-1 e indica el target esperado de b.
 
     Returns
     -------
-    results: TestResults
-    	Frecuencias con las que distancias acierta en el top-1, top-3 y top-5 de
-    	las veces.
+    results : TestResults
+    	Frecuencias con las que distancias acierta en el top-1, top-3 y
+    	top-5 de las veces.
     """
     k = min(5, distancias.size(1))
     topk = distancias.topk(k, dim=1, largest=False).indices

@@ -1,71 +1,72 @@
-from torch import load, device, save
+import torch
 from pathlib import Path
 from dataclasses import asdict
-from .models import TrainHistory, TrainProgramme, TrainableModule
+from .models import TrainHistory, TrainProgramme, TrainableMixin
 
-CHECKPOINTS_ROOT = Path('checkpoints')
+def ruta_al_checkpoint(net: TrainableMixin, folder: Path):
+    return folder / f"{net.name}.pt"
 
-def fases_disponibles(net: TrainableModule, folder: Path) -> [int]:
-    prefix = f"{net.name}_"
-    suffix = "_phase.pt"
-    phases = []
-    for path in folder.glob(f"{net.name}_*_phase.pt"):
-        name = path.name
-        if not (name.startswith(prefix) and name.endswith(suffix)):
-            continue
-        phase_token = name[len(prefix):-len(suffix)]
-        phase_number = phase_token.rstrip("tsnrhtdd")
-        if phase_number.isdigit():
-            phases.append(int(phase_number))
-    return phases
-
-def ruta_al_checkpoint(net: TrainableModule, phase: int, folder: Path):
-    ordinal = lambda n: "%d%s" % (n,"tsnrhtdd"[(n//10%10!=1)*(n%10<4)*n%10::4])
-    return folder / f"{net.name}_{ordinal(phase)}_phase.pt"
-
-def guardar_checkpoint(net: TrainableModule, train_history: TrainHistory, programme: TrainProgramme, phase: int = 1, folder: Path = CHECKPOINTS_ROOT):
-    path = ruta_al_checkpoint(net, phase, folder)
+def guardar_checkpoint(
+    net: TrainableMixin,
+    train_history: TrainHistory,
+    programme: TrainProgramme,
+    folder: Path
+):
+    path = ruta_al_checkpoint(net, folder)
     print(f"Guardando checkpoint en {path}", end="... ")
     path.parent.mkdir(parents=True, exist_ok=True)
     ckpt = {
         "model": net.state_dict(),
         "epoch": train_history.num_epochs,
-        "optimizer": net.optimizer(phase, programme).state_dict(),
+        "optimizer": net.optimizer(programme).state_dict(),
         "extra": {
             "history": asdict(train_history),
             "ckpt": str(path)
         }
     }
-    save(ckpt, path)
+    torch.save(ckpt, path)
     print("OK")
 
-def imprimir_encabezado(net: TrainableModule, phase: int = 1):
+def imprimir_encabezado(net: TrainableMixin):
+    """Imprime el encabezado del entrenamiento
+
+    Arguments
+    ---------
+    net : TrainableMixin
+    	Red neuronal artifical a entrenar.
+    """
     line = "=" * 49
     print(line)
-    print(f"Red {net.name} | fase {phase}")
+    print(f"Red {net.name}")
     print(line)
 
-def cargar_checkpoint(net: TrainableModule, device: device = device("cpu"), phase: int | None = None, folder: Path = CHECKPOINTS_ROOT, silent: bool = False):
-    if phase is None:
-        phases = fases_disponibles(net, folder)
-        if not phases:
-            raise FileNotFoundError(f"No checkpoints found for '{net.name}' in {folder}")
-        phase = max(phases)
+def cargar_checkpoint(net: TrainableMixin, folder: Path, silent: bool = False):
+    """Carga los pesos de un checkpoint en una red neuronal artificial.
 
-    path = ruta_al_checkpoint(net, phase, folder)
-    ckpt = load(path, map_location=device, weights_only=True)
-    net = net.to(device)
+    Arguments
+    ---------
+    net : TrainableMixin
+    	Red neuronal artificial
+    folder : Path
+    	Ruta a la carpeta donde se encuentran los checkpoints.
+    silent : Bool
+    	De ser verdadero, no imprime nada. De lo contrario, imprime la historia
+    	del entrenamiento cargado.
+    """
+    path = ruta_al_checkpoint(net, folder)
+    dispositivo = torch.device("cpu")
+    ckpt = torch.load(path, map_location=dispositivo, weights_only=True)
+    net = net.to(dispositivo)
     net.load_state_dict(ckpt["model"], strict=False)
     train_history = TrainHistory(**ckpt["extra"]["history"])
     num_epochs = train_history.num_epochs
     if not silent:
-        imprimir_encabezado(net, phase)
+        imprimir_encabezado(net)
     for epoch in range(num_epochs):
         train_loss = train_history.train_losses[epoch]
         val_loss = train_history.val_losses[epoch]
         if not silent:
-            print(f"Epoch {epoch+1}/{num_epochs} | train_loss={train_loss:.4f} | val_loss={val_loss:.4f}")
-    for test_loss in train_history.test_losses:
-        if not silent:
-            print(f"Phase {phase} | test_loss={test_loss:.4f}")
+            print(f"Época {epoch+1}/{num_epochs}", end=" | ")
+            print(f"train_loss={train_loss:.4f}", end=" | ")
+            print(f"val_loss={val_loss:.4f}")
     return train_history

@@ -7,10 +7,10 @@ from .datasets import PairedImageMelDataset, TinySpeakDataset
 from .transforms import RandomPosition
 
 class TinyPairedMel(DataModule):
-    """Build image/phonetized-mel/spoken-mel loaders from paired class datasets.
-
-    The two audio datasets are paired by class label and within-class file
-    order, so matching folder order can represent matching speakers.
+    """Build image/phonetized-mel/spoken-mel loaders from paired class
+    datasets. The two audio datasets are paired by class label and
+    within-class file order, so matching folder order can represent
+    matching speakers.
     """
     def __init__(
         self,

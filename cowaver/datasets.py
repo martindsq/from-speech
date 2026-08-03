@@ -6,7 +6,7 @@ import torch.nn as nn
 import torchaudio
 from torch.utils.data import Dataset
 from .transforms import RandomPosition, RandomAlign
-from .utils import cargar_audio, extract_mel, make_image
+from .utils import listar_clases, cargar_audio, extract_mel, make_image
 
 class TinySpeakDataset(Dataset):
     def __init__(
@@ -21,10 +21,7 @@ class TinySpeakDataset(Dataset):
         else:
             self.transform = transform
         if classes is None:
-            classes = [
-                d for d in sorted(os.listdir(base_dir))
-                if not d.startswith(".") and os.path.isdir(os.path.join(base_dir, d))
-            ]
+            classes = listar_clases(carpeta=base_dir)
         else:
             classes = list(classes)
             missing = [
@@ -59,30 +56,6 @@ class TinySpeakDataset(Dataset):
         waveform = cargar_audio(audio_path)
         waveform = self.transform(waveform)
         return waveform, target
-
-class ImageMelDataset(Dataset):
-    def __init__(self, base_dataset: TinySpeakDataset, position: RandomPosition | None = None, mel_bins: int = 80):
-        self.base_dataset = base_dataset
-        self.position = position
-        self.mel_bins = mel_bins
-
-    def __len__(self):
-        return len(self.base_dataset)
-
-    @property
-    def classes(self):
-        return self.base_dataset.classes
-
-    def __getitem__(self, index):
-        waveform, target = self.base_dataset[index]
-        mel = extract_mel(waveform, mel_bins = self.mel_bins)
-        word = self.classes[target]
-        if self.position is None:
-            x_stride, y_stride = 0, 0.5
-        else:
-            x_stride, y_stride = self.position()
-        image = make_image(word, x_stride, y_stride)
-        return (image, mel), target
 
 class PairedImageMelDataset(Dataset):
     """Pair phonetized and spoken mels by class and within-class order."""

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from torch import Tensor, nn
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LRScheduler, LambdaLR
+from torch.optim.lr_scheduler import LRScheduler, LinearLR
 from torch.utils.data import DataLoader, Dataset, default_collate
 from dataclasses import dataclass, field
 
@@ -76,7 +76,6 @@ class TrainProgramme:
     Attributes
     ----------
     theta_max : int
-    num_phases : int
     epsilon_zero : float
     theta : int
     epsilon_theta : float
@@ -85,45 +84,43 @@ class TrainProgramme:
     	prematura (early stopping).
     """
     theta_max: int
-    num_phases: int
     epsilon_zero: float = 3e-4
     theta: int = 60
     epsilon_theta: float = 3e-5
     patience: int = 3
 
-    def epochs_for_phase(self, phase: int) -> int:
-        return self.theta_max // self.num_phases
-
-    def epochs_before_phase(self, phase: int) -> int:
-        return sum(self.epochs_for_phase(index) for index in range(1, phase))
-
     @property
-    def total_epochs(self) -> int:
+    def lr(self) -> float:
+        return self.epsilon_zero
+    
+    @property
+    def num_epochs(self) -> int:
         return self.theta_max
 
-    def decay_epochs(self) -> int:
-        return self.theta
-
+    @property
+    def start_factor(self) -> float:
+        return 1.0
+    
     @property
     def end_factor(self) -> float:
         return self.epsilon_theta / self.epsilon_zero
+
+    @property
+    def total_iters(self) -> float:
+        return self.theta
 
 class TrainableMixin:
     @property
     def name(self) -> str:
         pass
     
-    def training_step(self, batch, batch_idx, phase: int) -> Tensor:
+    def training_step(self, batch) -> Tensor:
         """Trains a batch.
 
         Parameters
         ----------
         batch : 
             The batch.
-        batch_idx : i
-            The index of the batch.
-        phase : int
-            Indicates the curent phase number.
 
         Returns
         -------
@@ -135,48 +132,16 @@ class TrainableMixin:
     def test_step(self, data: DataModule, batch: tuple) -> TestResults:
         return TestResults(top1=0, top3=0, top5=0)
 
-    def optimizer(self, phase: int, programme: TrainProgramme) -> Optimizer:
+    def optimizer(self, programme: TrainProgramme) -> Optimizer:
         pass
 
-    def scheduler(self, optimizer: Optimizer, phase: int, programme: TrainProgramme) -> LRScheduler:
-        return LambdaLR(optimizer, lr_lambda=lambda epoch: 1.0)
-
-class TrainableModule(nn.Module):
-    """A module meant to be trained."""
-    def __init__(self, name: str):
-        super().__init__()
-        self.name = name
-    
-    def training_step(self, batch, batch_idx, phase: int) -> Tensor:
-        """Trains a batch.
-
-        Parameters
-        ----------
-        batch : 
-            The batch.
-        batch_idx : i
-            The index of the batch.
-        phase : int
-            Indicates the curent phase number.
-
-        Returns
-        -------
-        out : Tensor
-            The training loss.
-        """
-        pass
-
-    def test_step(self, data: DataModule, batch: tuple) -> TestResults:
-        return TestResults(top1=0, top3=0, top5=0)
-
-    def inference_step(self, batch: tuple) -> Tensor:
-        pass
-
-    def optimizer(self, phase: int, programme: TrainProgramme) -> Optimizer:
-        pass
-
-    def scheduler(self, optimizer: Optimizer, phase: int, programme: TrainProgramme) -> LRScheduler:
-        return LambdaLR(optimizer, lr_lambda=lambda epoch: 1.0)
+    def scheduler(self, optimizer: Optimizer, programme: TrainProgramme) -> LRScheduler:
+        return LinearLR(
+            optimizer,
+            start_factor=programme.start_factor,
+            end_factor=programme.end_factor,
+            total_iters=programme.total_iters
+        )
 
 @dataclass
 class TrainHistory:

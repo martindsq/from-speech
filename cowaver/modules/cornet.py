@@ -62,13 +62,4 @@ def CORnet_Z():
             m.weight.data.fill_(1)
             m.bias.data.zero_()
 
-    model = nn.DataParallel(model)
-
-    url = 'https://s3.amazonaws.com/cornet-models/cornet_z-5c427c9c.pth'
-    ckpt_data = torch.utils.model_zoo.load_url(
-        url,
-        map_location=torch.device('cpu')
-    )
-    model.load_state_dict(ckpt_data['state_dict'])
-
-    return model
+    return nn.DataParallel(model)
