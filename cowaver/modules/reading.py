@@ -9,20 +9,27 @@ from ..models import DataModule, TestResults, TrainProgramme, TrainableMixin
 from ..utils import distancia_mel, topk
     
 class SpeechAutoEncoder(TrainableMixin, ConvAutoEncoder):
-    def __init__(self, h_dim: int = 256, seq_len: int = 49, mel_bins: int = 80):
+    def __init__(self, h_dim: int, n_filters: int, seq_len = 49, mel_bins = 80):
         super().__init__(
             x_dim=(1, seq_len, mel_bins),
             h_dim=h_dim,
-            n_filters=32,
+            n_filters=n_filters,
             filter_size=5
         )
         self.h_dim = h_dim
+        self.n_filters = n_filters
         self.seq_len = seq_len
         self.mel_bins = mel_bins
 
     @property
     def name(self) -> str:
-        return f"speech_autoencoder_hd{self.h_dim}_sl{self.seq_len}_mb{self.mel_bins}"
+        return (
+            "speech_autoencoder_"
+            f"hd{self.h_dim}_"
+            f"nf{self.n_filters}_"
+            f"sl{self.seq_len}_"
+            f"mb{self.mel_bins}"
+        )
 
     def training_step(self, batch: tuple):
         (image, phonetized_mel, spoken_mel), target = batch
@@ -45,14 +52,15 @@ class SpeechAutoEncoder(TrainableMixin, ConvAutoEncoder):
         return AdamW(params=params, lr=programme.lr, weight_decay=1e-4)
 
 class PhonologicalAwareness(TrainableMixin, ConvAutoEncoder):
-    def __init__(self, h_dim: int = 256, seq_len: int = 49, mel_bins: int = 80):
+    def __init__(self, h_dim: int, n_filters: int, seq_len = 49, mel_bins = 80):
         super().__init__(
             x_dim=(1, seq_len, mel_bins),
             h_dim=h_dim,
-            n_filters=32,
+            n_filters=n_filters,
             filter_size=5
         )
         self.h_dim = h_dim
+        self.n_filters = n_filters
         self.seq_len = seq_len
         self.mel_bins = mel_bins
 
@@ -62,7 +70,13 @@ class PhonologicalAwareness(TrainableMixin, ConvAutoEncoder):
 
     @property
     def name(self) -> str:
-        return f"phonological_awareness_hd{self.h_dim}_sl{self.seq_len}_mb{self.mel_bins}"
+    	return (
+            "phonological_awareness_"
+            f"hd{self.h_dim}_"
+            f"nf{self.n_filters}_"
+            f"sl{self.seq_len}_"
+            f"mb{self.mel_bins}"
+        )
 
     def training_step(self, batch: tuple):
         (image, phonetized_mel, spoken_mel), target = batch
@@ -87,9 +101,10 @@ class PhonologicalAwareness(TrainableMixin, ConvAutoEncoder):
         return AdamW(params=params, lr=programme.lr, weight_decay=1e-4)
 
 class PhonologicalRoute(TrainableMixin, nn.Module):
-    def __init__(self, h_dim=256, seq_len: int = 49, mel_bins: int = 80):
+    def __init__(self, h_dim: int, n_filters: int, seq_len = 49, mel_bins = 80):
         super().__init__()
         self.h_dim = h_dim
+        self.n_filters = n_filters
         self.seq_len = seq_len
         self.mel_bins = mel_bins
         
@@ -113,6 +128,7 @@ class PhonologicalRoute(TrainableMixin, nn.Module):
         
         self.phonological_awareness = PhonologicalAwareness(
             h_dim=h_dim,
+            n_filters=n_filters,
             seq_len=seq_len,
             mel_bins=mel_bins
         )
@@ -126,7 +142,13 @@ class PhonologicalRoute(TrainableMixin, nn.Module):
 
     @property
     def name(self) -> str:
-        return f"phonological_route_hd{self.h_dim}_sl{self.seq_len}_mb{self.mel_bins}"
+        return (
+            "phonological_route_"
+            f"hd{self.h_dim}_"
+            f"nf{self.n_filters}_"
+            f"sl{self.seq_len}_"
+            f"mb{self.mel_bins}"
+        )
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         v = self.cornet(x)
