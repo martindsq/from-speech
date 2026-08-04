@@ -1,3 +1,2 @@
-data/
-*.tar.xz
-*.pt
+!kalulu-phones-480.tar.xz
+!kalulu-spoken-480.tar.xz

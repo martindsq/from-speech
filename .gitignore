@@ -5,16 +5,12 @@
 data/
 venv/
 out/
-checkpoints/
 install.batch
 eval.batch
 train.sh
-kalulu-phonemes.tar.xz
-tiny-letter-30.tar.xz
-tiny-mswc-200.tar.xz
-tiny-phones-200.tar.xz
-tiny-mswc-500.tar.xz
-tiny-phones-500.tar.xz
+
+*.tar.xz
+*.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
