@@ -1,7 +1,11 @@
 import argparse
 from pathlib import Path
-from cowaver.datamodules import FilteredTinyMel, TinyMel
-from cowaver.modules import ADAPTER_REGISTRY, ARCHITECTURE_REGISTRY, DECODER_REGISTRY, CoWaver, build_model
+from cowaver.datamodules import TinyPairedMel
+from cowaver.modules.reading import (
+    SpeechAutoEncoder,
+    PhonologicalAwareness,
+    PhonologicalRoute
+)
 from cowaver.utils import (
     descomprimir_archivo,
     encontrar_dispositivo,
@@ -11,144 +15,108 @@ from cowaver.utils import (
     seleccionar_clases,
     separar_clases,
 )
-from cowaver.checkpoints import fases_disponibles, cargar_checkpoint
+from cowaver.checkpoints import cargar_checkpoint
 
 parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--language", "-l",
+    choices=["spanish", "frenche"],
+    default="spanish",
+    help="Language to be trained.",
+)
+parser.add_argument(
+    "--dataset-size",
+    type=int,
+    default=480,
+    help="Size of the dataset to train.",
+)
 parser.add_argument('--data', '-d', default="data")
 parser.add_argument('--checkpoints', '-c', default="checkpoints")
-parser.add_argument(
-    "--architecture",
-    "-a",
-    choices=sorted(ARCHITECTURE_REGISTRY),
-    default="unconditioned",
-)
-parser.add_argument(
-    "--adapter",
-    choices=sorted(ADAPTER_REGISTRY),
-    default="attn",
-)
-parser.add_argument(
-    "--decoder",
-    choices=sorted(DECODER_REGISTRY),
-    default="attn",
-)
-parser.add_argument("--latent-dim", type=int, default=512)
-parser.add_argument("--hidden-size", type=int, default=256)
+parser.add_argument("--hidden-dim", type=int, default=128)
+parser.add_argument("--filters", type=int, default=16)
 parser.add_argument("--mel-bins", type=int, default=80)
-parser.add_argument("--max-classes", type=int, default=50)
-parser.add_argument(
-    "--cleanup-data",
-    action="store_true",
-    help="Delete decompressed dataset folders after evaluation.",
-)
+
 args = parser.parse_args()
-if args.max_classes < 2:
-    parser.error("--max-classes must be at least 2")
-if args.mel_bins <= 0:
-    parser.error("--mel-bins must be positive")
+LANGUAGE = args.language
+DATASET_SIZE = args.dataset_size
+MEL_BINS = args.mel_bins
+H_DIM = args.hidden_dim
+N_FILTERS = args.filters
+SEED = 42
+CORNET_CKPT_URL = "https://s3.amazonaws.com/cornet-models/cornet_z-5c427c9c.pth"
+
+print("LANGUAGE", LANGUAGE)
+print("DATASET_SIZE", DATASET_SIZE)
+print("MEL_BINS", MEL_BINS)
+print("H_DIM", H_DIM)
+print("N_FILTERS", N_FILTERS)
+print("SEED", SEED)
+print("CORNET_CKPT_URL", CORNET_CKPT_URL)
+
+workspace_path = Path(LANGUAGE)
+compressed_phones_path = workspace_path / f"kalulu-phones-{DATASET_SIZE}.tar.xz"
+compressed_spoken_path = workspace_path / f"kalulu-spoken-{DATASET_SIZE}.tar.xz"
+
+print(f"Buscando {compressed_phones_path}", end="... ")
+print("OK" if compressed_phones_path.exists() else "ERROR")
+
+print(f"Buscando {compressed_spoken_path}", end="... ")
+print("OK" if compressed_spoken_path.exists() else "ERROR")
+
 data_path = Path(args.data)
-checkpoints_path = Path(args.checkpoints)
+checkpoints_path = None
+if args.checkpoints is not None:
+    checkpoints_path = Path(args.checkpoints)
 data_path.mkdir(parents=True, exist_ok=True)
 
 print("--data", data_path)
 print("--checkpoints", checkpoints_path)
-print("--architecture", args.architecture)
-print("--adapter", args.adapter)
-print("--decoder", args.decoder)
-print("--latent-dim", args.latent_dim)
-print("--hidden-size", args.hidden_size)
-print("--mel-bins", args.mel_bins)
-print("--max-classes", args.max_classes)
-print("--cleanup-data", args.cleanup_data)
 
-tiny_letter_xz_path = Path("tiny-letter-30.tar.xz")
-tiny_phones_xz_path = Path("tiny-phones-500.tar.xz")
-tiny_mswc_xz_path = Path("tiny-mswc-500.tar.xz")
+phones_path = descomprimir_archivo(compressed_phones_path, data_path)
+spoken_path = descomprimir_archivo(compressed_spoken_path, data_path)
 
-tiny_letter_path = descomprimir_archivo(tiny_letter_xz_path, data_path)
-tiny_phones_path = descomprimir_archivo(tiny_phones_xz_path, data_path)
-tiny_mswc_path = descomprimir_archivo(tiny_mswc_xz_path, data_path)
-dispositivo = encontrar_dispositivo()
+palabras = listar_clases(phones_path / "train")
+print("Total de palabras:", len(palabras))
 
-letter_classes = listar_clases(tiny_letter_path / "train")
-phone_classes = seleccionar_clases(tiny_phones_path, args.max_classes, seed=42)
-word_classes = seleccionar_clases(tiny_mswc_path, args.max_classes, seed=42)
-phone_train_classes, phone_test_classes = separar_clases(phone_classes)
-word_train_classes, word_test_classes = separar_clases(word_classes)
+palabras_a_entrenar, palabras_a_generalizar = separar_clases(palabras, fraction=0.2)
+print("Palabras a entrenar:", len(palabras_a_entrenar))
+print(f"Palabras a generalizar ({len(palabras_a_generalizar)}):", palabras_a_generalizar)
 
-print("--letter-classes", len(letter_classes))
-print("--phone-train-classes", len(phone_train_classes))
-print("--phone-test-classes", len(phone_test_classes))
-print("--phone-test", phone_test_classes)
-print("--word-train-classes", len(word_train_classes))
-print("--word-test-classes", len(word_test_classes))
-print("--word-test", word_test_classes)
+full_data = TinyPairedMel(
+    phones_path,
+    spoken_path,
+    mel_bins=MEL_BINS,
+    classes=palabras
+)
+training_data = TinyPairedMel(
+    phones_path,
+    spoken_path,
+    mel_bins=MEL_BINS,
+    classes=palabras_a_entrenar
+)
+generalization_data = TinyPairedMel(
+    phones_path,
+    spoken_path,
+    mel_bins=MEL_BINS,
+    classes=palabras_a_generalizar
+)
 
-def eval_cowaver(
-    cowaver: CoWaver,
-    letters: TinyMel,
-    phones_train: TinyMel,
-    words_train: TinyMel,
-    phones_test: TinyMel,
-    words_test: TinyMel,
-):
-    print(f"Evaluando en {tiny_letter_path.stem}", end="... ")
-    print(evaluar_red(cowaver, letters))
-    print(f"Evaluando en {tiny_phones_path.stem} train", end="... ")
-    print(evaluar_red(cowaver, phones_train))
-    print(f"Evaluando en {tiny_phones_path.stem} test", end="... ")
-    print(evaluar_red(cowaver, phones_test))
-    print(f"Evaluando en {tiny_mswc_path.stem} train", end="... ")
-    print(evaluar_red(cowaver, words_train))
-    print(f"Evaluando en {tiny_mswc_path.stem} test", end="... ")
-    print(evaluar_red(cowaver, words_test))
+print("Evaluando Speech AutoEncoder...")
+speech_autoencoder = SpeechAutoEncoder(h_dim=H_DIM, n_filters=N_FILTERS)
+cargar_checkpoint(speech_autoencoder, folder=checkpoints_path, silent=True)
+print(evaluar_red(speech_autoencoder, full_data))
 
-def load_cowaver(cowaver: CoWaver):
-    letters = TinyMel(
-        base_dir=tiny_letter_path,
-        mel_bins=cowaver.mel_bins,
-        classes=letter_classes,
-    )
-    phones_train = TinyMel(
-        base_dir=tiny_phones_path,
-        mel_bins=cowaver.mel_bins,
-        classes=phone_train_classes,
-    )
-    phones_all = TinyMel(
-        base_dir=tiny_phones_path,
-        mel_bins=cowaver.mel_bins,
-        classes=phone_classes,
-    )
-    phones_test = FilteredTinyMel(phones_all, phone_test_classes)
-    words_train = TinyMel(
-        base_dir=tiny_mswc_path,
-        mel_bins=cowaver.mel_bins,
-        classes=word_train_classes,
-    )
-    words_all = TinyMel(
-        base_dir=tiny_mswc_path,
-        mel_bins=cowaver.mel_bins,
-        classes=word_classes,
-    )
-    words_test = FilteredTinyMel(words_all, word_test_classes)
-    phases = fases_disponibles(cowaver, checkpoints_path)
-    if not phases:
-        raise FileNotFoundError(f"No checkpoints found for '{cowaver.name}' in {checkpoints_path}")
-    for phase in sorted(phases):
-        cargar_checkpoint(net=cowaver, device=dispositivo, phase=phase, folder=checkpoints_path)
-        eval_cowaver(cowaver, letters, phones_train, words_train, phones_test, words_test)
+print("Evaluando Phonological Awareness...")
+phonological_awareness = PhonologicalAwareness(h_dim=H_DIM, n_filters=N_FILTERS)
+cargar_checkpoint(phonological_awareness, folder=checkpoints_path, silent=True)
+print(evaluar_red(phonological_awareness, training_data))
+print(evaluar_red(phonological_awareness, generalization_data))
 
-model_kwargs = {
-    "latent_dim": args.latent_dim,
-    "hidden_size": args.hidden_size,
-    "mel_bins": args.mel_bins,
-    "seq_len": 49,
-    "adapter": args.adapter,
-    "decoder": args.decoder,
-}
-load_cowaver(build_model(args.architecture, **model_kwargs))
+print("Evaluando Phonological Route...")
+phonological_route = PhonologicalRoute(h_dim=H_DIM, n_filters=N_FILTERS)
+cargar_checkpoint(phonological_route, folder=checkpoints_path, silent=True)
+print(evaluar_red(phonological_route, training_data))
+print(evaluar_red(phonological_route, generalization_data))
 
-if args.cleanup_data:
-    borrar_carpeta(tiny_letter_path)
-    borrar_carpeta(tiny_phones_path)
-    borrar_carpeta(tiny_mswc_path)
+borrar_carpeta(spoken_path)
+borrar_carpeta(phones_path)

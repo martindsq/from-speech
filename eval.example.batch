@@ -8,31 +8,13 @@
 #SBATCH --output=eval.out
 #SBATCH --gres=gpu:1
 #SBATCH --mail-type=ALL
-#SBATCH --mail-user=YOUR_EMAIL_HERE
 
 source /clusteruy/home/$USER/miniconda3/bin/activate
 conda activate cowaver
 cd ~/cowaver
 
-# Architectures:
-#   unconditioned, conditioned, dual-route
-#
-# Decoders:
-#   convolutional, recurrent
-#
-# Adapters:
-#   convolutional, pointwise
-#
-# Example:
-#   sbatch eval.batch dual-route convolutional recurrent
-
-ARCHITECTURE=${1:-unconditioned}
-DECODER=${2:-convolutional}
-ADAPTER=${3:-convolutional}
-
 python eval.py \
-  -d /scratch/$USER/$ARCHITECTURE/$ADAPTER/$DECODER/ \
-  -c checkpoints/$ARCHITECTURE/$ADAPTER/$DECODER/ \
-  --architecture $ARCHITECTURE \
-  --adapter $ADAPTER \
-  --decoder $DECODER
+  --data /scratch/$USER/${SLURM_JOB_ID:-$(date +%Y%m%d%H%M%S)} \
+  --checkpoints checkpoints/$SLURM_JOB_NAME \
+  --hidden-size 128 \
+  --filters 16

@@ -1,28 +1,37 @@
 import argparse
 from pathlib import Path
-from time import perf_counter
 
-from cowaver.datamodules import TinyMel, MixedTinyMel
-from cowaver.checkpoints import cargar_checkpoint
-from cowaver.modules import ADAPTER_REGISTRY, ARCHITECTURE_REGISTRY, DECODER_REGISTRY, CoWaver, build_model
+import cowaver
+from cowaver.datamodules import TinyPairedMel
+from cowaver.checkpoints import cargar_checkpoint, guardar_checkpoint
 from cowaver.models import TrainProgramme
-from cowaver.transforms import RandomPosition
+from cowaver.modules.reading import (
+    SpeechAutoEncoder,
+    PhonologicalAwareness,
+    PhonologicalRoute
+)
 from cowaver.utils import (
     descomprimir_archivo,
     encontrar_dispositivo,
+    sembrar_semilla,
     entrenar_red,
     borrar_carpeta,
     listar_clases,
-    seleccionar_clases,
     separar_clases,
 )
 
-parser = argparse.ArgumentParser(
-    description=(
-        "Train a CoWaver model on the tiny letter, phone, and word datasets "
-        "using a three-phase curriculum with configurable data proportions "
-        "and linear learning-rate decay."
-    )
+parser = argparse.ArgumentParser(description=("Train reading models."))
+parser.add_argument(
+    "--language", "-l",
+    choices=["spanish", "frenche"],
+    default="spanish",
+    help="Language to be trained.",
+)
+parser.add_argument(
+    "--dataset-size",
+    type=int,
+    default=480,
+    help="Size of the dataset to train.",
 )
 parser.add_argument(
     '--data', '-d',
@@ -35,33 +44,16 @@ parser.add_argument(
     help="Directory where phase checkpoints are saved. Omit to skip saving."
 )
 parser.add_argument(
-    "--architecture", "-a",
-    choices=sorted(ARCHITECTURE_REGISTRY),
-    default="unconditioned",
-    help="Model architecture to train.",
-)
-parser.add_argument(
-    "--adapter",
-    choices=sorted(ADAPTER_REGISTRY),
-    default="attn",
-    help="Temporal adapter architecture between visual features and decoder.",
-)
-parser.add_argument(
-    "--decoder", choices=sorted(DECODER_REGISTRY),
-    default="attn",
-    help="Mel decoder architecture.",
-)
-parser.add_argument(
-    "--latent-dim",
+    "--hidden-dim",
     type=int,
-    default=512,
-    help="Latent feature dimension used by adapters and decoders."
+    default=128,
+    help="Size of the autoencoder bottleneck.",
 )
 parser.add_argument(
-    "--hidden-size",
+    "--filters",
     type=int,
-    default=256,
-    help="Hidden size used by decoder modules."
+    default=16,
+    help="Number of filters in the autoencoder convolutional layers.",
 )
 parser.add_argument(
     "--mel-bins",
@@ -74,12 +66,6 @@ parser.add_argument(
     type=int,
     default=20,
     help="Total number of epochs across all curriculum phases."
-)
-parser.add_argument(
-    "--max-classes",
-    type=int,
-    default=50,
-    help="Maximum number of word classes to include"
 )
 parser.add_argument(
     "--epsilon-zero",
@@ -102,68 +88,10 @@ parser.add_argument(
     default=1e-4,
     help="Learning rate at epoch theta and for the flat tail of training.",
 )
-parser.add_argument(
-    "--phase1",
-    "-p1",
-    nargs=3,
-    type=float,
-    default=[1.0, 0.0, 0.0],
-    metavar=("LETTERS", "PHONES", "WORDS"),
-    help="Sampling proportions for letters, phones, and words in phase 1.",
-)
-parser.add_argument(
-    "--phase2",
-    "-p2",
-    nargs=3,
-    type=float,
-    default=[0.0, 0.0, 0.0],
-    metavar=("LETTERS", "PHONES", "WORDS"),
-    help="Sampling proportions for letters, phones, and words in phase 2.",
-)
-parser.add_argument(
-    "--phase3",
-    "-p3",
-    nargs=3,
-    type=float,
-    default=[0.0, 0.0, 0.0],
-    metavar=("LETTERS", "PHONES", "WORDS"),
-    help="Sampling proportions for letters, phones, and words in phase 3.",
-)
-parser.add_argument(
-    "--phase",
-    type=int,
-    choices=(1, 2, 3),
-    default=1,
-    help="Curriculum phase to train. Phases greater than 1 load the previous phase checkpoint first.",
-)
+
 args = parser.parse_args()
-if any(
-    proportion < 0
-    for proportions in (args.phase1, args.phase2, args.phase3)
-    for proportion in proportions
-):
-    parser.error("phase proportions must be non-negative")
-phase1_enabled = any(proportion > 0 for proportion in args.phase1)
-phase2_enabled = any(proportion > 0 for proportion in args.phase2)
-phase3_enabled = any(proportion > 0 for proportion in args.phase3)
-if not phase1_enabled:
-    parser.error("--phase1must be non-zero")
-if phase3_enabled and not phase2_enabled:
-    parser.error("--phase3 requires --phase2 to be non-zero")
-selected_phase_enabled = {
-    1: phase1_enabled,
-    2: phase2_enabled,
-    3: phase3_enabled,
-}[args.phase]
-if not selected_phase_enabled:
-    parser.error(f"--phase{args.phase} must be non-zero to train phase {args.phase}")
-num_phases = 1 + int(phase2_enabled) + int(phase3_enabled)
 if args.theta_max <= 0:
     parser.error("--theta-max must be positive")
-if args.theta_max % num_phases != 0:
-    parser.error(f"--theta-max must be divisible by {num_phases}")
-if args.max_classes < 2:
-    parser.error("--max-classes must be at least 2")
 if args.mel_bins <= 0:
     parser.error("--mel-bins must be positive")
 if args.epsilon_zero <= 0:
@@ -174,8 +102,32 @@ if args.theta > args.theta_max:
     parser.error("--theta must be less than or equal to --theta-max")
 if args.epsilon_theta <= 0 or args.epsilon_theta > args.epsilon_zero:
     parser.error("--epsilon-theta must be in the range (0, epsilon-zero]")
-if args.phase > 1 and args.checkpoints is None:
-    parser.error("--phase greater than 1 requires --checkpoints to load the previous phase")
+
+LANGUAGE = args.language
+DATASET_SIZE = args.dataset_size
+MEL_BINS = args.mel_bins
+H_DIM = args.hidden_dim
+N_FILTERS = args.filters
+SEED = 42
+CORNET_CKPT_URL = "https://s3.amazonaws.com/cornet-models/cornet_z-5c427c9c.pth"
+
+print("LANGUAGE", LANGUAGE)
+print("DATASET_SIZE", DATASET_SIZE)
+print("MEL_BINS", MEL_BINS)
+print("H_DIM", H_DIM)
+print("N_FILTERS", N_FILTERS)
+print("SEED", SEED)
+print("CORNET_CKPT_URL", CORNET_CKPT_URL)
+
+workspace_path = Path(LANGUAGE)
+compressed_phones_path = workspace_path / f"kalulu-phones-{DATASET_SIZE}.tar.xz"
+compressed_spoken_path = workspace_path / f"kalulu-spoken-{DATASET_SIZE}.tar.xz"
+
+print(f"Buscando {compressed_phones_path}", end="... ")
+print("OK" if compressed_phones_path.exists() else "ERROR")
+
+print(f"Buscando {compressed_spoken_path}", end="... ")
+print("OK" if compressed_spoken_path.exists() else "ERROR")
 
 data_path = Path(args.data)
 checkpoints_path = None
@@ -185,145 +137,124 @@ data_path.mkdir(parents=True, exist_ok=True)
 
 print("--data", data_path)
 print("--checkpoints", checkpoints_path)
-print("--architecture", args.architecture)
-print("--adapter", args.adapter)
-print("--decoder", args.decoder)
-print("--latent-dim", args.latent_dim)
-print("--hidden-size", args.hidden_size)
-print("--mel-bins", args.mel_bins)
 print("--theta-max", args.theta_max)
-print("--max-classes", args.max_classes)
 print("--epsilon-zero", args.epsilon_zero)
 print("--theta", args.theta)
 print("--epsilon-theta", args.epsilon_theta)
-print("--phase1", args.phase1)
-print("--phase2", args.phase2)
-print("--phase3", args.phase3)
-print("--phase", args.phase)
-print("--phase1-enabled", phase1_enabled)
-print("--phase2-enabled", phase2_enabled)
-print("--phase3-enabled", phase3_enabled)
-print("--num-phases", num_phases)
 
 programme = TrainProgramme(
     theta_max=args.theta_max,
-    num_phases=num_phases,
     epsilon_zero=args.epsilon_zero,
     theta=args.theta,
     epsilon_theta=args.epsilon_theta,
+    patience=5
 )
 
-tiny_letter_xz_path = Path("tiny-letter-30.tar.xz")
-tiny_phones_xz_path = Path("tiny-phones-500.tar.xz")
-tiny_mswc_xz_path = Path("tiny-mswc-500.tar.xz")
+phones_path = descomprimir_archivo(compressed_phones_path, data_path)
+spoken_path = descomprimir_archivo(compressed_spoken_path, data_path)
 
-decompression_started_at = perf_counter()
-tiny_letter_path = descomprimir_archivo(tiny_letter_xz_path, data_path)
-tiny_phones_path = descomprimir_archivo(tiny_phones_xz_path, data_path)
-tiny_mswc_path = descomprimir_archivo(tiny_mswc_xz_path, data_path)
-decompression_seconds = perf_counter() - decompression_started_at
-print(f"Cronómetro descomprension: {decompression_seconds:.2f}")
+palabras = listar_clases(phones_path / "train")
+print("Total de palabras:", len(palabras))
 
-dispositivo = encontrar_dispositivo()
+palabras_a_entrenar, palabras_a_generalizar = separar_clases(palabras, fraction=0.2)
+print("Palabras a entrenar:", len(palabras_a_entrenar))
+print(f"Palabras a generalizar ({len(palabras_a_generalizar)}):", palabras_a_generalizar)
 
-letter_classes = listar_clases(tiny_letter_path / "train")
-phone_classes = seleccionar_clases(tiny_phones_path, args.max_classes, seed=42)
-word_classes = seleccionar_clases(tiny_mswc_path, args.max_classes, seed=42)
-phone_train_classes, phone_test_classes = separar_clases(phone_classes)
-word_train_classes, word_test_classes = separar_clases(word_classes)
+full_data = TinyPairedMel(
+    phones_path,
+    spoken_path,
+    mel_bins=MEL_BINS,
+    classes=palabras
+)
+training_data = TinyPairedMel(
+    phones_path,
+    spoken_path,
+    mel_bins=MEL_BINS,
+    classes=palabras_a_entrenar
+)
+generalization_data = TinyPairedMel(
+    phones_path,
+    spoken_path,
+    mel_bins=MEL_BINS,
+    classes=palabras_a_generalizar
+)
 
-print("--letter-classes", len(letter_classes))
-print("--phone-train-classes", len(phone_train_classes))
-print("--phone-test-classes", len(phone_test_classes))
-print("--phone-test", phone_test_classes)
-print("--word-train-classes", len(word_train_classes))
-print("--word-test-classes", len(word_test_classes))
-print("--word-test", word_test_classes)
+# Speech AutoEncoder
 
-def make_phase_data(letters: TinyMel, phones: TinyMel, words: TinyMel, proportions: list[float]):
-    """Construye el datamodule de una fase a partir de sus proporciones activas."""
-    datamodules = [letters, phones, words]
-    names = ["letters", "phones", "words"]
-    active = [
-        (data, proportion, name)
-        for data, proportion, name in zip(datamodules, proportions, names)
-        if proportion > 0
-    ]
-    if len(active) == 1:
-        return active[0][0]
-    return MixedTinyMel(
-        datamodules=[data for data, _, _ in active],
-        proportions=[proportion for _, proportion, _ in active],
-        names=[name for _, _, name in active],
-    )
-
-
-def train_phase(cowaver: CoWaver, data, phase: int):
-    """Entrena una fase e informa su duración total en segundos."""
-    phase_started_at = perf_counter()
-    entrenar_red(
-        net=cowaver,
-        data=data,
+sembrar_semilla(SEED)
+speech_autoencoder = SpeechAutoEncoder(h_dim=H_DIM, n_filters=N_FILTERS)
+speech_autoencoder, train_history = entrenar_red(
+    net=speech_autoencoder,
+    data=full_data,
+    programme=programme
+)
+if checkpoints_path is not None:
+    guardar_checkpoint(
+        speech_autoencoder,
+        train_history=train_history,
         programme=programme,
-        phase=phase,
-        dispositivo=dispositivo,
-        checkpoints_folder=checkpoints_path,
+        folder=checkpoints_path
     )
-    phase_seconds = perf_counter() - phase_started_at
-    print(f"Phase {phase} stopwatch: {phase_seconds:.2f}")
 
-def train_cowaver(cowaver: CoWaver):
-    letters = TinyMel(
-        base_dir=tiny_letter_path,
-        mel_bins=cowaver.mel_bins,
-        position=RandomPosition(center=0.5, spread=0.5, axis="x"),
-        classes=letter_classes,
-    )
-    phones_train = TinyMel(
-        base_dir=tiny_phones_path,
-        mel_bins=cowaver.mel_bins,
-        classes=phone_train_classes,
-    )
-    words_train = TinyMel(
-        base_dir=tiny_mswc_path,
-        mel_bins=cowaver.mel_bins,
-        classes=word_train_classes,
-    )
-    phase_proportions = {
-        1: args.phase1,
-        2: args.phase2,
-        3: args.phase3,
-    }
-    phase_data = make_phase_data(
-        letters,
-        phones_train,
-        words_train,
-        phase_proportions[args.phase],
-    )
-    if args.phase > 1:
-        checkpoint_phase = args.phase - 1
-        print(f"Cargando checkpoint de fase {checkpoint_phase}")
-        cargar_checkpoint(
-            net=cowaver,
-            device=dispositivo,
-            phase=checkpoint_phase,
-            folder=checkpoints_path,
-        )
-    train_phase(cowaver, phase_data, phase=args.phase)
+# Phonological Awareness
 
-model_kwargs = {
-    "latent_dim": args.latent_dim,
-    "hidden_size": args.hidden_size,
-    "mel_bins": args.mel_bins,
-    "seq_len": 49,
-    "decoder": args.decoder,
-    "adapter": args.adapter,
-}
-net = build_model(args.architecture, **model_kwargs)
-total_params = sum(p.numel() for p in net.parameters())
-print("Parameters:", total_params)
-train_cowaver(net)
+sembrar_semilla(SEED)
+phonological_awareness = PhonologicalAwareness(h_dim=H_DIM, n_filters=N_FILTERS)
+phonological_awareness.load_state_dict(speech_autoencoder.state_dict())
+phonological_awareness, train_history = entrenar_red(
+    net=phonological_awareness,
+    data=training_data,
+    programme=programme
+)
+if checkpoints_path is not None:
+    guardar_checkpoint(
+        phonological_awareness,
+        train_history=train_history,
+        programme=programme,
+        folder=checkpoints_path
+    )
 
-#borrar_carpeta(tiny_letter_path)
-#borrar_carpeta(tiny_phones_path)
-#borrar_carpeta(tiny_mswc_path)
+# Phonological Route
+
+sembrar_semilla(SEED)
+phonological_route = PhonologicalRoute(h_dim=H_DIM, n_filters=N_FILTERS)
+
+checkpoint = torch.utils.model_zoo.load_url(
+    CORNET_CKPT_URL,
+    map_location=torch.device("cpu")
+)
+phonological_route.cornet.load_state_dict(checkpoint["state_dict"], strict=False)
+
+checkpoint = phonological_awareness.state_dict()
+phonological_route.phonological_awareness.load_state_dict(checkpoint)
+
+print("Midiendo estadística", end="... ")
+all_h = []
+phonological_route.phonological_awareness.eval()
+with torch.no_grad():
+    for batch in training_data.train_loader():
+        (_, phonetized_mel, _), labels = batch
+        phonetized_mel = phonetized_mel.transpose(2, 3)
+        h = phonological_route.phonological_awareness.encoder(phonetized_mel)
+        all_h.append(h)
+all_h = torch.cat(all_h, dim=0)
+h_mean = all_h.mean(dim=0)
+h_std = all_h.std(dim=0)
+phonological_route.set_h_stats(h_mean, h_std)
+print("OK")
+
+phonological_route, train_history = entrenar_red(
+    net=phonological_route,
+    data=training_data,
+    programme=programme
+)
+if checkpoints_path is not None:
+    guardar_checkpoint(
+        phonological_route,
+        train_history=train_history,
+        programme=programme,
+        folder=checkpoints_path
+    )
+
+borrar_carpeta(spoken_path)
+borrar_carpeta(phones_path)
